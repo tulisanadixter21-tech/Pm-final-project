@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Offline Inventory and Sales Management System for food businesses.">
+  <meta name="theme-color" content="#16a34a">
+  <title>Food Business IMS</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <!-- Local vendor libraries (no CDN, works offline) -->
+  <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="assets/vendor/bootstrap-icons/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+  <!-- ================= STARTUP LOADER ================= -->
+  <div id="boot-screen" class="boot-screen">
+    <div class="text-center">
+      <div class="brand-logo brand-logo-lg mb-3"><i class="bi bi-shop"></i></div>
+      <div class="spinner-border text-primary" role="status"></div>
+      <p class="text-muted mt-3 mb-0" id="boot-message">Loading application data…</p>
+    </div>
+  </div>
+
+  <!-- ================= LOGIN SCREEN ================= -->
+  <div id="login-screen" class="login-screen d-none">
+    <div class="login-card card">
+      <div class="card-body p-4 p-md-5">
+        <div class="text-center mb-4">
+          <div class="brand-logo brand-logo-lg mx-auto mb-3"><i class="bi bi-shop"></i></div>
+          <h1 class="h4 fw-bold mb-1 js-business-name">Food Business</h1>
+          <p class="text-muted small mb-0">Inventory &amp; Sales Management System</p>
+        </div>
+        <form id="login-form" novalidate>
+          <div class="mb-3">
+            <label for="login-username" class="form-label">Username</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-person"></i></span>
+              <input type="text" class="form-control" id="login-username" name="username" autocomplete="username" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="login-password" class="form-label">Password</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-lock"></i></span>
+              <input type="password" class="form-control" id="login-password" name="password" autocomplete="current-password" required>
+              <button class="btn btn-outline-secondary" type="button" id="login-toggle-pw" title="Show password"><i class="bi bi-eye"></i></button>
+            </div>
+          </div>
+          <div class="alert alert-danger py-2 small d-none" id="login-error"></div>
+          <button type="submit" class="btn btn-primary w-100 py-2"><i class="bi bi-box-arrow-in-right me-1"></i> Sign In</button>
+        </form>
+        <div class="demo-accounts mt-4">
+          <div class="small fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>Demo accounts</div>
+          <div class="d-flex flex-wrap gap-2" id="demo-accounts"></div>
+          <p class="text-muted small mt-3 mb-0">
+            This is a <strong>local demonstration login</strong>. Accounts are stored only in this browser.
+            Do not use real passwords.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= APPLICATION SHELL ================= -->
+  <div id="app-shell" class="app-shell d-none">
+    <aside id="sidebar" class="sidebar" aria-label="Main navigation">
+      <div class="sidebar-brand">
+        <div class="brand-logo"><i class="bi bi-shop"></i></div>
+        <div class="brand-text">
+          <div class="brand-name js-business-name">Food Business</div>
+          <div class="brand-sub">Inventory &amp; Sales</div>
+        </div>
+      </div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+      <div class="sidebar-footer">
+        <span class="nav-label small text-muted"><i class="bi bi-hdd me-1"></i>Data stored locally</span>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <div class="main">
+      <header class="topbar">
+        <button class="btn btn-icon" id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar"><i class="bi bi-list"></i></button>
+        <div class="topbar-title d-none d-md-block js-business-name">Food Business</div>
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <span id="network-status" class="badge rounded-pill network-badge online"><i class="bi bi-wifi"></i> <span>Online</span></span>
+
+          <div class="dropdown">
+            <button class="btn btn-icon position-relative" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="Notifications" id="notif-btn">
+              <i class="bi bi-bell"></i>
+              <span class="notif-count d-none" id="notif-count">0</span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-end notif-menu p-0">
+              <div class="notif-header">Notifications</div>
+              <div id="notif-list" class="notif-list"></div>
+            </div>
+          </div>
+
+          <div class="dropdown">
+            <button class="btn user-btn d-flex align-items-center gap-2" data-bs-toggle="dropdown" aria-label="User menu">
+              <span class="avatar" id="user-avatar">A</span>
+              <span class="d-none d-sm-block text-start lh-sm">
+                <span class="d-block fw-semibold small" id="user-name">User</span>
+                <span class="d-block text-muted" style="font-size:.72rem" id="user-role">Role</span>
+              </span>
+              <i class="bi bi-chevron-down small text-muted"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><button class="dropdown-item" id="menu-profile"><i class="bi bi-person-circle me-2"></i>My Profile</button></li>
+              <li id="menu-settings-li"><a class="dropdown-item" href="#/settings"><i class="bi bi-gear me-2"></i>Settings</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><button class="dropdown-item text-danger" id="menu-logout"><i class="bi bi-box-arrow-right me-2"></i>Sign Out</button></li>
+            </ul>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="page-header">
+          <div>
+            <nav aria-label="breadcrumb">
+              <ol class="breadcrumb mb-1" id="breadcrumb"></ol>
+            </nav>
+            <h1 class="page-title" id="page-title">Dashboard</h1>
+            <p class="page-subtitle" id="page-subtitle"></p>
+          </div>
+        </div>
+        <div id="page-content"></div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Toasts / print area -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-container"></div>
+  <div id="print-area"></div>
+
+  <!-- Vendor scripts -->
+  <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="assets/vendor/chartjs/chart.umd.min.js"></script>
+
+  <!-- Application scripts (order matters) -->
+  <script src="assets/js/utilities.js"></script>
+  <script src="assets/js/storage.js"></script>
+  <script src="assets/js/database.js"></script>
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/dashboard.js"></script>
+  <script src="assets/js/products.js"></script>
+  <script src="assets/js/inventory.js"></script>
+  <script src="assets/js/sales.js"></script>
+  <script src="assets/js/customers.js"></script>
+  <script src="assets/js/suppliers.js"></script>
+  <script src="assets/js/reports.js"></script>
+  <script src="assets/js/users.js"></script>
+  <script src="assets/js/settings.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
