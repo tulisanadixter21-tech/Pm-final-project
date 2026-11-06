@@ -28,23 +28,32 @@ const Sales = {
   },
 
   async load() {
-    [this.products, this.categories, this.customers, this.txns] = await Promise.all([
+    if (typeof Prefs !== 'undefined' && typeof Prefs.syncProductImages === 'function') {
+      await Prefs.syncProductImages();
+    }
+    const [allProducts, categories, customers, txns] = await Promise.all([
       DB.getAll('products'), DB.getAll('categories'), DB.getAll('customers'), DB.getAll('transactions')]);
-    this.products.forEach(p => Utils.ensureProductBatches(p));
-    this.categories.sort((a, b) => a.name.localeCompare(b.name));
-    this.customers.sort((a, b) => a.name.localeCompare(b.name));
-    this.txns.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    // POS strictly sells finished menu items (excludes raw ingredients)
+    this.products = allProducts.filter(p => !p.isIngredient && !String(p.id || '').startsWith('ING-'));
+    this.products.forEach(p => {
+      if (!p.image && typeof Prefs !== 'undefined' && Prefs.defaultFoodImage) {
+        p.image = Prefs.defaultFoodImage(p) || '';
+      }
+    });
+    this.categories = categories.sort((a, b) => a.name.localeCompare(b.name));
+    this.customers = customers.sort((a, b) => a.name.localeCompare(b.name));
+    this.txns = txns.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
     this.reconcileCart();
     this.renderView();
   },
 
   catName(id) { const c = (this.categories || []).find(x => x.id === id); return c ? c.name : 'Uncategorized'; },
 
-  /** Ensures cart items still exist and do not exceed non-expired sellable stock. */
+  /** Ensures cart items still exist and do not exceed available servings. */
   reconcileCart() {
     this.pos.cart = this.pos.cart.filter(item => {
       const p = this.products.find(x => x.id === item.productId && x.status === 'active');
-      const avail = Utils.sellableStock(p);
+      const avail = p ? Math.max(0, Number(p.stock) || 0) : 0;
       if (!p || avail <= 0) return false;
       item.name = p.name;
       item.price = p.price;
@@ -249,24 +258,16 @@ const Sales = {
     }
     grid.innerHTML = list.map(p => {
       const inCart = (this.pos.cart.find(c => c.productId === p.id) || {}).qty || 0;
-      const shelf = Utils.productShelfSummary(p);
-      const sellable = shelf.sellableQty;
-      const allExpired = p.stock > 0 && sellable <= 0;
+      const avail = Math.max(0, Number(p.stock) || 0);
       const st = Utils.stockStatus(p);
-      const nextExp = shelf.earliestSellable;
-      const expHint = allExpired
-        ? '<span class="badge badge-soft-danger mt-1">Expired Stock</span>'
-        : nextExp && nextExp.status.group === 'expiring'
-          ? `<span class="badge badge-soft-${nextExp.status.cls} mt-1">FEFO: ${Utils.esc(nextExp.status.daysText)}</span>`
-          : '';
-      return `<button type="button" class="pos-item position-relative" data-pid="${p.id}" ${sellable <= 0 ? 'disabled' : ''}>
+      return `<button type="button" class="pos-item position-relative ${inCart ? 'in-cart' : ''}" data-pid="${p.id}" ${avail <= 0 ? 'disabled' : ''}>
         ${inCart ? `<span class="badge bg-primary rounded-pill pos-incart">${inCart}</span>` : ''}
-        ${showImg ? `<div class="pos-img">${p.image ? `<img src="${p.image}" alt="">` : '<i class="bi bi-egg-fried"></i>'}</div>` : ''}
+        ${showImg ? `<div class="pos-img"><img src="${Utils.esc(Utils.productImageSrc(p))}" alt="${Utils.esc(p.name)}" loading="lazy" onerror="this.onerror=null;this.src='${Utils.FALLBACK_FOOD_IMAGE}'"></div>` : ''}
+        <div class="cell-sub mono mb-1">${Utils.esc(p.id)}</div>
         <div class="pos-name">${Utils.esc(p.name)}</div>
-        ${expHint}
-        <div class="d-flex justify-content-between align-items-center mt-auto pt-1 w-100">
+        <div class="d-flex justify-content-between align-items-center mt-auto pt-2 w-100">
           <span class="pos-price">${Utils.money(p.price)}</span>
-          <span class="pos-stock text-${allExpired ? 'danger' : st.cls}">${sellable > 0 ? `${sellable} ${Utils.esc(p.unit)}` : (allExpired ? 'Expired' : 'Out')}</span>
+          <span class="badge badge-soft-${st.cls} pos-stock">${avail > 0 ? `${avail} ${Utils.esc(p.unit)}` : 'Out'}</span>
         </div>
       </button>`;
     }).join('');
@@ -275,17 +276,15 @@ const Sales = {
   addToCart(productId) {
     const p = this.products.find(x => x.id === productId && x.status === 'active');
     if (!p) { Utils.toast('This product is unavailable.', 'warning'); return; }
-    const shelf = Utils.productShelfSummary(p);
-    if (shelf.sellableQty <= 0) {
-      Utils.toast(shelf.expiredQty > 0
-        ? `Cannot sell "${p.name}": remaining stock (${shelf.expiredQty} ${p.unit}) is expired.`
-        : 'This product is out of stock.', 'danger');
+    const avail = Math.max(0, Number(p.stock) || 0);
+    if (avail <= 0) {
+      Utils.toast('This product is out of stock.', 'danger');
       return;
     }
     const line = this.pos.cart.find(c => c.productId === productId);
     if (line) {
-      if (line.qty + 1 > shelf.sellableQty) {
-        Utils.toast(`Only ${shelf.sellableQty} non-expired ${p.unit} of ${p.name} available in stock.`, 'warning');
+      if (line.qty + 1 > avail) {
+        Utils.toast(`Only ${avail} ${p.unit} of ${p.name} available.`, 'warning');
         return;
       }
       line.qty += 1;
@@ -307,9 +306,9 @@ const Sales = {
     const p = this.products.find(x => x.id === productId);
     if (!line || !p) return;
     if (isNaN(qty) || qty <= 0) { this.removeFromCart(productId); return; }
-    const avail = Utils.sellableStock(p);
+    const avail = Math.max(0, Number(p.stock) || 0);
     if (qty > avail) {
-      Utils.toast(`Only ${avail} non-expired ${p.unit} of ${p.name} available.`, 'warning');
+      Utils.toast(`Only ${avail} ${p.unit} of ${p.name} available.`, 'warning');
       qty = avail;
     }
     if (qty <= 0) { this.removeFromCart(productId); return; }
@@ -450,24 +449,19 @@ const Sales = {
         for (const item of items) {
           const prod = await DB.req(ps.get(item.productId));
           if (!prod || prod.status !== 'active') throw new Error(`"${item.name}" is no longer available.`);
-          Utils.ensureProductBatches(prod, now);
-          const sellable = Utils.sellableStock(prod, now);
-          if (sellable < item.qty) {
-            throw new Error(`Insufficient non-expired stock for "${prod.name}". Sellable: ${sellable}, in cart: ${item.qty}.`);
+          const avail = Math.max(0, Number(prod.stock) || 0);
+          if (avail < item.qty) {
+            throw new Error(`Insufficient servings for "${prod.name}". Available: ${avail}, in cart: ${item.qty}.`);
           }
           const prev = prod.stock;
-          const fefo = Utils.deductBatchesFEFO(prod, item.qty, { allowExpired: false, refDate: now });
-          item.batches = fefo.allocations;
+          prod.stock = prev - item.qty;
           prod.updatedAt = now.toISOString();
           await DB.req(ps.put(prod));
-          const batchSummary = fefo.allocations.map(a => `${a.batchId} (${a.qty})`).join(', ');
           await DB.req(ms.add(Inventory.buildMovement({
             id: 'MOV-' + Utils.pad(++movSeq, 6), product: prod, type: 'Sale',
             quantity: item.qty, previousStock: prev, newStock: prod.stock,
-            reason: `Sold - ${id}${batchSummary ? ` [FEFO: ${batchSummary}]` : ''}`,
-            refId: id, date: now.toISOString(),
-            batchId: fefo.allocations.map(a => a.batchId).join(', '),
-            expirationDate: (fefo.allocations[0] || {}).expirationDate || ''
+            reason: `Sold - ${id}`,
+            refId: id, date: now.toISOString()
           })));
         }
 
@@ -669,35 +663,8 @@ const Sales = {
         for (const item of t.items) {
           const prod = await DB.req(ps.get(item.productId));
           if (!prod) continue;
-          Utils.ensureProductBatches(prod, now);
-          const prev = prod.stock;
-          if (Array.isArray(item.batches) && item.batches.length) {
-            for (const alloc of item.batches) {
-              const b = prod.batches.find(x => x.id === alloc.batchId);
-              if (b) b.qty += Number(alloc.qty) || 0;
-              else prod.batches.push({
-                id: alloc.batchId || `${prod.id}-B99`,
-                dateReceived: Utils.dateKey(now),
-                expirationDate: alloc.expirationDate || Utils.dateKey(Utils.addDays(now, prod.defaultShelfLifeDays || 7)),
-                qty: Number(alloc.qty) || 0,
-                initialQty: Number(alloc.qty) || 0,
-                note: `Restored from voided ${t.id}`
-              });
-            }
-          } else if (prod.batches.length) {
-            prod.batches[0].qty += Number(item.qty) || 0;
-          } else {
-            prod.batches.push({
-              id: `${prod.id}-B01`,
-              dateReceived: Utils.dateKey(now),
-              expirationDate: Utils.dateKey(Utils.addDays(now, prod.defaultShelfLifeDays || 7)),
-              qty: Number(item.qty) || 0,
-              initialQty: Number(item.qty) || 0,
-              note: `Restored from voided ${t.id}`
-            });
-          }
-          prod.batches = Utils.sortBatchesFEFO(prod.batches);
-          prod.stock = prod.batches.reduce((s, b) => s + (Number(b.qty) || 0), 0);
+          const prev = Number(prod.stock) || 0;
+          prod.stock = prev + (Number(item.qty) || 0);
           prod.updatedAt = now.toISOString();
           await DB.req(ps.put(prod));
           await DB.req(ms.add(Inventory.buildMovement({

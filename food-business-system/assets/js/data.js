@@ -38,21 +38,31 @@ const SampleData = {
     const meta = await DB.getSetting('meta');
     if (meta && meta.initialized) {
       await this.upgradeBatchesIfNeeded();
+      if (typeof Prefs !== 'undefined' && typeof Prefs.syncProductImages === 'function') {
+        await Prefs.syncProductImages();
+      }
       return false;
     }
     const existing = await DB.count('products') + await DB.count('users');
     if (existing > 0) {
       await this.upgradeBatchesIfNeeded();
+      if (typeof Prefs !== 'undefined' && typeof Prefs.syncProductImages === 'function') {
+        await Prefs.syncProductImages();
+      }
       await DB.setSetting('meta', { initialized: true, initializedAt: new Date().toISOString(), version: this.VERSION });
       return false;
     }
     await DB.bulkAdd(this.build());
+    if (typeof Prefs !== 'undefined' && typeof Prefs.syncProductImages === 'function') {
+      await Prefs.syncProductImages();
+    }
     return true;
   },
 
   /**
    * Non-destructively ensures every existing product in IndexedDB has `batches`
-   * synchronized with its `stock` so upgraded databases support FEFO & expiration tracking.
+   * synchronized with its `stock` and injects local food image paths when missing,
+   * without overwriting current stock counts or history.
    */
   async upgradeBatchesIfNeeded() {
     const now = new Date();
@@ -60,14 +70,33 @@ const SampleData = {
       const ps = tx.objectStore('products');
       const all = await DB.req(ps.getAll());
       for (const p of all) {
-        const hadBatches = Array.isArray(p.batches) && p.batches.length > 0;
-        const sum = hadBatches ? p.batches.reduce((s, b) => s + (Number(b.qty) || 0), 0) : 0;
-        if (!hadBatches || sum !== p.stock) {
-          // If upgrading one of the 10 sample products that had no batches yet, assign realistic multi-batch dates
-          if (!hadBatches && p.stock > 0) {
-            p.batches = this.defaultBatchesForProduct(p, now);
+        let changed = false;
+        const isIng = !!(p.isIngredient || String(p.id || '').startsWith('ING-'));
+        if (isIng) {
+          if (!p.isIngredient) { p.isIngredient = true; changed = true; }
+          const hadBatches = Array.isArray(p.batches) && p.batches.length > 0;
+          const sum = hadBatches ? p.batches.reduce((s, b) => s + (Number(b.qty) || 0), 0) : 0;
+          if (!hadBatches || sum !== p.stock) {
+            Utils.ensureProductBatches(p, now);
+            changed = true;
           }
-          Utils.ensureProductBatches(p, now);
+        } else {
+          if (p.isIngredient !== false) { p.isIngredient = false; changed = true; }
+          if (Array.isArray(p.batches) && p.batches.length > 0) {
+            p.batches = [];
+            changed = true;
+          }
+        }
+        if (!p.image || !String(p.image).trim()) {
+          const defaultImg = typeof Prefs !== 'undefined' && typeof Prefs.defaultFoodImage === 'function'
+            ? Prefs.defaultFoodImage(p)
+            : '';
+          if (defaultImg) {
+            p.image = defaultImg;
+            changed = true;
+          }
+        }
+        if (changed) {
           await DB.req(ps.put(p));
         }
       }
@@ -133,23 +162,25 @@ const SampleData = {
     const catName = id => (categories.find(c => c.id === id) || {}).name || '';
 
     const created = at(-31, 7, 0).toISOString();
-    const P = (id, name, categoryId, price, cost, unit, reorderLevel, opening, weight, defaultShelfLifeDays, description) =>
+    const P = (id, name, categoryId, price, cost, unit, reorderLevel, opening, weight, defaultShelfLifeDays, description, image) =>
       ({
         id, name, categoryId, description, price, cost, stock: 0, reorderLevel, unit,
-        defaultShelfLifeDays, batches: [], image: '', status: 'active',
+        defaultShelfLifeDays, batches: [],
+        image: image || (typeof Prefs !== 'undefined' && Prefs.defaultFoodImage ? Prefs.defaultFoodImage(id, name) : ''),
+        status: 'active',
         createdAt: created, updatedAt: created, _opening: opening, _weight: weight
       });
     const products = [
-      P('P001', 'Classic Burger', 'CAT-01', 120, 62, 'pc', 15, 150, 10, 7, 'Quarter-pound beef patty with lettuce, tomato, cheese and house sauce.'),
-      P('P002', 'Fries Large', 'CAT-02', 55.5, 22, 'serving', 20, 180, 9, 21, 'Crispy golden potato fries, large serving.'),
-      P('P003', 'Iced Tea', 'CAT-03', 25, 8, 'cup', 30, 260, 9, 10, 'House-brewed lemon iced tea, 16 oz.'),
-      P('P004', 'Cheese Pizza Slice', 'CAT-04', 85, 38, 'slice', 15, 110, 6, 5, 'Thin-crust slice with mozzarella and tomato sauce.'),
-      P('P005', 'Chocolate Cake', 'CAT-05', 150, 68, 'slice', 10, 45, 3, 5, 'Moist chocolate cake slice with fudge frosting.'),
-      P('P006', 'Chicken Sandwich', 'CAT-01', 95, 48, 'pc', 15, 110, 6, 7, 'Breaded chicken fillet sandwich with coleslaw.'),
-      P('P007', 'Spaghetti', 'CAT-04', 100, 42, 'plate', 15, 110, 6, 7, 'Filipino-style sweet spaghetti with hotdog and cheese.'),
-      P('P008', 'Fried Chicken', 'CAT-06', 110, 52, 'pc', 20, 150, 8, 10, 'Crispy fried chicken (1 pc) with rice and gravy.'),
-      P('P009', 'Milk Tea', 'CAT-03', 75, 28, 'cup', 25, 180, 7, 7, 'Classic milk tea with tapioca pearls, 16 oz.'),
-      P('P010', 'Pancakes', 'CAT-07', 90, 32, 'plate', 10, 30, 3, 4, 'Stack of three fluffy pancakes with butter and syrup.')
+      P('P001', 'Classic Burger', 'CAT-01', 120, 62, 'pc', 15, 150, 10, 7, 'Quarter-pound beef patty with lettuce, tomato, cheese and house sauce.', 'assets/images/foods/classic-burger.jpg'),
+      P('P002', 'Fries Large', 'CAT-02', 55.5, 22, 'serving', 20, 180, 9, 21, 'Crispy golden potato fries, large serving.', 'assets/images/foods/fries-large.jpg'),
+      P('P003', 'Iced Tea', 'CAT-03', 25, 8, 'cup', 30, 260, 9, 10, 'House-brewed lemon iced tea, 16 oz.', 'assets/images/foods/iced-tea.jpg'),
+      P('P004', 'Cheese Pizza Slice', 'CAT-04', 85, 38, 'slice', 15, 110, 6, 5, 'Thin-crust slice with mozzarella and tomato sauce.', 'assets/images/foods/cheese-pizza-slice.jpg'),
+      P('P005', 'Chocolate Cake', 'CAT-05', 150, 68, 'slice', 10, 45, 3, 5, 'Moist chocolate cake slice with fudge frosting.', 'assets/images/foods/chocolate-cake.jpg'),
+      P('P006', 'Chicken Sandwich', 'CAT-01', 95, 48, 'pc', 15, 110, 6, 7, 'Breaded chicken fillet sandwich with coleslaw.', 'assets/images/foods/chicken-sandwich.jpg'),
+      P('P007', 'Spaghetti', 'CAT-04', 100, 42, 'plate', 15, 110, 6, 7, 'Filipino-style sweet spaghetti with hotdog and cheese.', 'assets/images/foods/spaghetti.jpg'),
+      P('P008', 'Fried Chicken', 'CAT-06', 110, 52, 'pc', 20, 150, 8, 10, 'Crispy fried chicken (1 pc) with rice and gravy.', 'assets/images/foods/fried-chicken.jpg'),
+      P('P009', 'Milk Tea', 'CAT-03', 75, 28, 'cup', 25, 180, 7, 7, 'Classic milk tea with tapioca pearls, 16 oz.', 'assets/images/foods/milk-tea.jpg'),
+      P('P010', 'Pancakes', 'CAT-07', 90, 32, 'plate', 10, 30, 3, 4, 'Stack of three fluffy pancakes with butter and syrup.', 'assets/images/foods/pancakes.jpg')
     ];
 
     const customers = [
@@ -284,11 +315,39 @@ const SampleData = {
       move(pancakes, 'Adjustment', pancakes.stock, 0, new Date(now), 'Physical count correction - batter spoiled', '', 'Jerome Navarro');
     }
 
-    // Populate multi-batch FEFO shelf-life records for all products matching their final stock
+    // Clean up temporary simulation fields on menu items (finished menu items do not track expiry batches)
     products.forEach(p => {
       delete p._opening;
       delete p._weight;
-      p.batches = this.defaultBatchesForProduct(p, now);
+      p.isIngredient = false;
+      p.batches = [];
+    });
+
+    // Seed raw kitchen ingredients (with local ingredient photos & FEFO expiry batches) for the Inventory module
+    const rawIngredients = (typeof Prefs !== 'undefined' && typeof Prefs.buildSeedIngredients === 'function')
+      ? Prefs.buildSeedIngredients(now)
+      : [];
+    rawIngredients.forEach(ing => {
+      products.push(ing);
+      if (ing.stock > 0) {
+        const firstBatch = ing.batches && ing.batches[0];
+        movements.push({
+          id: 'MOV-' + U.pad(++movNo, 6),
+          productId: ing.id,
+          productName: ing.name,
+          type: 'Initial Stock',
+          quantity: ing.stock,
+          previousStock: 0,
+          newStock: ing.stock,
+          date: ing.createdAt,
+          reason: 'Opening raw ingredient inventory',
+          refId: '',
+          batchId: firstBatch ? firstBatch.id : `${ing.id}-B01`,
+          dateReceived: firstBatch ? firstBatch.dateReceived : '',
+          expirationDate: firstBatch ? firstBatch.expirationDate : '',
+          userName: 'Administrator'
+        });
+      }
     });
     movements.sort((a, b) => a.date.localeCompare(b.date));
 

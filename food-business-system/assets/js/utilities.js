@@ -525,10 +525,26 @@ const Utils = (() => {
     const s = stockStatus(p);
     return `<span class="badge badge-soft-${s.cls}">${s.label}</span>`;
   }
+  const FALLBACK_FOOD_IMAGE = 'assets/images/foods/placeholder-food.svg';
+  const FALLBACK_INGREDIENT_IMAGE = 'assets/images/ingredients/placeholder-ingredient.svg';
+  function fallbackImageFor(p) {
+    return (p && (p.isIngredient || String(p.id || '').startsWith('ING-')))
+      ? FALLBACK_INGREDIENT_IMAGE
+      : FALLBACK_FOOD_IMAGE;
+  }
+  function productImageSrc(p) {
+    if (p && p.image && String(p.image).trim()) return p.image;
+    if (p && typeof Prefs !== 'undefined' && typeof Prefs.defaultFoodImage === 'function') {
+      const mapped = Prefs.defaultFoodImage(p);
+      if (mapped) return mapped;
+    }
+    return fallbackImageFor(p);
+  }
   function productThumb(p, cls = 'prod-thumb') {
-    return p && p.image
-      ? `<img src="${p.image}" alt="" class="${cls}">`
-      : `<span class="${cls}"><i class="bi bi-egg-fried"></i></span>`;
+    const src = productImageSrc(p);
+    const fb = fallbackImageFor(p);
+    const alt = p && p.name ? esc(p.name) : 'Item';
+    return `<img src="${esc(src)}" alt="${alt}" class="${cls}" loading="lazy" onerror="this.onerror=null;this.src='${fb}'">`;
   }
 
   /* ---------- Pagination ---------- */
@@ -599,7 +615,7 @@ const Utils = (() => {
     download, toCSV, exportCSV, stamp, readImage, print,
     expiryThresholds, daysUntilExpiry, batchShelfStatus, shelfBadge,
     sortBatchesFEFO, ensureProductBatches, productShelfSummary, sellableStock, deductBatchesFEFO,
-    stockStatus, stockBadge, productThumb,
+    stockStatus, stockBadge, FALLBACK_FOOD_IMAGE, FALLBACK_INGREDIENT_IMAGE, fallbackImageFor, productImageSrc, productThumb,
     paginate, pagerHTML, bindPager, emptyState, emptyRow, statCard, debounce,
     chart, destroyCharts, palette
   };

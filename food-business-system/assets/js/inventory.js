@@ -8,15 +8,16 @@
 
 const Inventory = {
   title: 'Inventory',
-  subtitle: 'Monitor stock levels, perishable batches, shelf life and movement history',
+  subtitle: 'Manage raw ingredients, kitchen supplies, perishable batches, shelf life and movement history',
   view: 'stock',
   state: { search: '', category: '', status: '', expiry: '', sort: 'priority', viewMode: 'grid', page: 1 },
   bstate: { search: '', filter: 'attention', page: 1 },
   mstate: { search: '', type: '', from: '', to: '', page: 1 },
-  TYPES: ['Initial Stock', 'Stock In', 'Stock Out', 'Expired / Discarded', 'Adjustment', 'Sale'],
+  TYPES: ['Initial Stock', 'Stock In', 'Stock Out', 'Expired / Discarded', 'Adjustment'],
+  UNITS: ['kg', 'g', 'L', 'mL', 'pack', 'pc', 'box', 'bottle', 'can', 'tray'],
   REASONS: {
-    in: ['Supplier delivery', 'Kitchen production / prepared batch', 'Customer return (resellable)', 'Transfer in', 'Other'],
-    out: ['Spoilage / expired', 'Damaged', 'Staff meal / internal use', 'Free sample / giveaway', 'Other'],
+    in: ['Supplier delivery', 'Kitchen prep / restock', 'Transfer in', 'Other'],
+    out: ['Kitchen prep / production use', 'Daily cooking consumption', 'Staff meal / internal use', 'Other'],
     discard: ['Expired batch discarded', 'Spoiled / quality check failed', 'Contaminated / damaged packaging', 'End-of-day perishable disposal', 'Other'],
     adjust: ['Physical count correction', 'Data entry correction', 'Other']
   },
@@ -67,16 +68,49 @@ const Inventory = {
   },
 
   async load() {
-    [this.products, this.categories, this.movements, this.suppliers] = await Promise.all([
+    if (typeof Prefs !== 'undefined' && typeof Prefs.syncProductImages === 'function') {
+      await Prefs.syncProductImages();
+    }
+    const [allProducts, dbCategories, allMovements, suppliers] = await Promise.all([
       DB.getAll('products'), DB.getAll('categories'), DB.getAll('movements'), DB.getAll('suppliers')]);
-    this.products.forEach(p => Utils.ensureProductBatches(p));
-    this.categories.sort((a, b) => a.name.localeCompare(b.name));
+    this.suppliers = suppliers;
+    this.products = allProducts.filter(p => p.isIngredient || String(p.id || '').startsWith('ING-'));
+    this.products.forEach(p => {
+      p.isIngredient = true;
+      if ((!p.image || !String(p.image).startsWith('assets/images/ingredients/')) && typeof Prefs !== 'undefined' && Prefs.defaultFoodImage) {
+        p.image = Prefs.defaultFoodImage(p) || p.image || '';
+      }
+      Utils.ensureProductBatches(p);
+    });
+    const ingCats = (typeof Prefs !== 'undefined' && Array.isArray(Prefs.INGREDIENT_CATEGORIES))
+      ? Prefs.INGREDIENT_CATEGORIES.map(c => ({ ...c }))
+      : [];
+    const catMap = new Map(ingCats.map(c => [c.id, c]));
+    this.products.forEach(p => {
+      if (p.categoryId && !catMap.has(p.categoryId)) {
+        const found = dbCategories.find(c => c.id === p.categoryId);
+        catMap.set(p.categoryId, { id: p.categoryId, name: p.categoryName || (found ? found.name : p.categoryId) });
+      }
+    });
+    this.categories = Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const ingIds = new Set(this.products.map(p => p.id));
+    this.movements = allMovements.filter(m => ingIds.has(m.productId) || String(m.productId || '').startsWith('ING-'));
     this.movements.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    try { localStorage.setItem('fbs_ingredients', JSON.stringify(this.products)); } catch {}
     this.renderSummary();
     this.renderView();
   },
 
-  catName(id) { const c = (this.categories || []).find(x => x.id === id); return c ? c.name : 'Uncategorized'; },
+  catName(id, item) {
+    if (item && item.categoryName) return item.categoryName;
+    const c = (this.categories || []).find(x => x.id === id);
+    if (c) return c.name;
+    if (typeof Prefs !== 'undefined' && Array.isArray(Prefs.INGREDIENT_CATEGORIES)) {
+      const ic = Prefs.INGREDIENT_CATEGORIES.find(x => x.id === id);
+      if (ic) return ic.name;
+    }
+    return 'Kitchen Supply';
+  },
 
   /** Returns a flat list of all active batches across products with shelf-life metadata. */
   allBatches() {
@@ -89,7 +123,7 @@ const Inventory = {
           productId: p.id,
           productName: p.name,
           categoryId: p.categoryId,
-          categoryName: this.catName(p.categoryId),
+          categoryName: this.catName(p.categoryId, p),
           unit: p.unit,
           cost: p.cost,
           productStatus: p.status
@@ -129,16 +163,16 @@ const Inventory = {
       alertHtml += `<div class="alert ${expiredBatches > 0 ? 'alert-soft-danger' : 'alert-soft-orange'} d-flex flex-wrap gap-2 align-items-center mb-2">
         <i class="bi bi-hourglass-bottom fs-5"></i>
         <div class="flex-grow-1">
-          <strong>Expiration Alert:</strong>
-          ${expiredBatches > 0 ? `<span class="fw-semibold">${expiredBatches} expired batch(es) (${Utils.num(expiredUnits)} units)</span> cannot be sold and should be discarded. ` : ''}
-          ${expiringBatches > 0 ? `<span>${expiringBatches} batch(es) (${Utils.num(expiringUnits)} units) are nearing expiration.</span>` : ''}
+          <strong>Ingredient Expiration Alert:</strong>
+          ${expiredBatches > 0 ? `<span class="fw-semibold">${expiredBatches} expired ingredient batch(es) (${Utils.num(expiredUnits)} units)</span> cannot be used for kitchen prep and should be discarded. ` : ''}
+          ${expiringBatches > 0 ? `<span>${expiringBatches} ingredient batch(es) (${Utils.num(expiringUnits)} units) are nearing expiration.</span>` : ''}
         </div>
         <button type="button" class="btn btn-sm ${expiredBatches > 0 ? 'btn-danger' : 'btn-outline-primary'}" id="inv-jump-expiring">Review Batches</button>
       </div>`;
     }
     if (alerts.length && Prefs.get('lowStockAlerts')) {
       alertHtml += `<div class="alert alert-soft-warning d-flex gap-2 align-items-start mb-3"><i class="bi bi-exclamation-triangle-fill fs-5"></i>
-        <div><strong>${alerts.length} product(s) low or out of stock:</strong> ${alerts.slice(0, 6).map(p => `${Utils.esc(p.name)} (${p.stock} ${Utils.esc(p.unit)})`).join(', ')}${alerts.length > 6 ? '…' : ''}</div></div>`;
+        <div><strong>${alerts.length} raw ingredient(s) low or out of stock:</strong> ${alerts.slice(0, 6).map(p => `${Utils.esc(p.name)} (${p.stock} ${Utils.esc(p.unit)})`).join(', ')}${alerts.length > 6 ? '…' : ''}</div></div>`;
     }
     const alertEl = document.getElementById('inv-alert');
     alertEl.innerHTML = alertHtml;
@@ -154,8 +188,8 @@ const Inventory = {
       <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'exclamation-triangle', tone: 'amber', label: 'Low Stock', value: counts.low, sub: 'At or below reorder level' })}</div>
       <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'x-octagon', tone: 'red', label: 'Out of Stock', value: counts.out, sub: 'Zero available' })}</div>
       <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'hourglass-split', tone: 'orange', label: 'Expiring Soon', value: expiringBatches, sub: `${Utils.num(expiringUnits)} units within ${Utils.expiryThresholds().near}d` })}</div>
-      <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'calendar-x', tone: 'red', label: 'Expired Batches', value: expiredBatches, sub: `${Utils.num(expiredUnits)} units blocked from POS` })}</div>
-      <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'cash-stack', tone: 'blue', label: 'Inventory Value', value: Utils.money(value), sub: `Retail ${Utils.money(retail)}` })}</div>`;
+      <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'calendar-x', tone: 'red', label: 'Expired Batches', value: expiredBatches, sub: `${Utils.num(expiredUnits)} units unusable` })}</div>
+      <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'cash-stack', tone: 'blue', label: 'Inventory Value', value: Utils.money(value), sub: `${this.products.length} raw ingredients` })}</div>`;
   },
 
   renderView() {
@@ -189,7 +223,7 @@ const Inventory = {
         <div class="card-body">
           <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
             <div class="d-flex align-items-center gap-2 flex-wrap">
-              <span class="fw-semibold"><i class="bi bi-boxes text-primary me-1"></i>Inventory Stock Levels</span>
+              <span class="fw-semibold"><i class="bi bi-boxes text-primary me-1"></i>Raw Ingredients &amp; Kitchen Supplies</span>
               <span class="badge badge-soft-secondary" id="inv-count-badge">0 items</span>
             </div>
             <div class="d-flex gap-2 flex-wrap align-items-center">
@@ -202,11 +236,12 @@ const Inventory = {
                 </button>
               </div>
               <button class="btn btn-light btn-sm" id="inv-export"><i class="bi bi-filetype-csv me-1"></i>Export CSV</button>
+              <button class="btn btn-primary btn-sm" id="inv-add"><i class="bi bi-plus-lg me-1"></i>Add Ingredient</button>
             </div>
           </div>
           <div class="toolbar">
             <div class="search-box"><i class="bi bi-search"></i>
-              <input type="search" class="form-control" id="inv-search" placeholder="Search by product name or SKU / ID…" value="${Utils.esc(s.search)}"></div>
+              <input type="search" class="form-control" id="inv-search" placeholder="Search by ingredient name or SKU / ID…" value="${Utils.esc(s.search)}"></div>
             <select class="form-select" id="inv-cat" aria-label="Filter by category"><option value="">All categories</option>${this.categories.map(c => `<option value="${c.id}">${Utils.esc(c.name)}</option>`).join('')}</select>
             <select class="form-select" id="inv-status" aria-label="Filter by stock status">
               <option value="">All stock status</option><option value="in">In Stock</option><option value="low">Low Stock</option><option value="out">Out of Stock</option></select>
@@ -256,6 +291,8 @@ const Inventory = {
     });
 
     box.querySelector('#inv-export').addEventListener('click', () => this.exportStockCSV(this.filteredStock()));
+    const addBtn = box.querySelector('#inv-add');
+    if (addBtn) addBtn.addEventListener('click', () => this.openIngredientForm());
     Utils.bindPager(box.querySelector('#inv-pager'), p => { s.page = p; this.drawStock(); });
     box.querySelector('#inv-stock-display').addEventListener('click', e => {
       const b = e.target.closest('[data-act]');
@@ -269,6 +306,8 @@ const Inventory = {
         this.renderHistory();
       } else if (b.dataset.act === 'batches') {
         this.openBatchesModal(p);
+      } else if (b.dataset.act === 'edit-ing') {
+        this.openIngredientForm(p);
       } else {
         this.openStockForm(p, b.dataset.act);
       }
@@ -289,7 +328,7 @@ const Inventory = {
     const s = this.state, q = s.search.toLowerCase();
     const order = { out: 0, low: 1, in: 2 };
     const list = this.products.filter(p =>
-      (!q || [p.id, p.name, this.catName(p.categoryId)].join(' ').toLowerCase().includes(q)) &&
+      (!q || [p.id, p.name, this.catName(p.categoryId, p)].join(' ').toLowerCase().includes(q)) &&
       (!s.category || p.categoryId === s.category) &&
       (!s.status || Utils.stockStatus(p).key === s.status) &&
       this.matchesExpiryFilter(p, s.expiry));
@@ -327,17 +366,17 @@ const Inventory = {
       display.innerHTML = `
         <div class="card">
           <div class="table-wrap"><table class="table table-hover"><thead><tr>
-            <th>Product ID</th><th>Product Name</th><th>Category</th>
+            <th>Ingredient ID</th><th>Ingredient Name</th><th>Category</th>
             <th class="text-end">Available</th><th class="text-end">Reorder</th><th>Unit</th>
             <th>Stock Status</th><th>Next Expiration &amp; Shelf Life</th><th>Last Updated</th><th class="text-end">Actions</th>
           </tr></thead>
           <tbody id="inv-tbody">${pg.items.length ? pg.items.map(p => this.stockRowHTML(p)).join('')
-            : Utils.emptyRow(10, 'clipboard-x', 'No products found', this.products.length ? 'Adjust your search or filters.' : 'Add products in the Products module first.')}</tbody></table></div>
+            : Utils.emptyRow(10, 'clipboard-x', 'No raw ingredients found', this.products.length ? 'Adjust your search or filters.' : 'Click "Add Ingredient" to add raw kitchen stock.')}</tbody></table></div>
         </div>`;
     } else {
       display.innerHTML = pg.items.length
         ? `<div class="row g-3" id="inv-grid">${pg.items.map(p => this.stockCardHTML(p)).join('')}</div>`
-        : `<div class="card">${Utils.emptyState('clipboard-x', 'No products found', this.products.length ? 'Adjust your search or filters.' : 'Add products in the Products module first.')}</div>`;
+        : `<div class="card">${Utils.emptyState('clipboard-x', 'No raw ingredients found', this.products.length ? 'Adjust your search or filters.' : 'Click "Add Ingredient" to add raw kitchen stock.')}</div>`;
     }
 
     const pager = document.getElementById('inv-pager');
@@ -347,9 +386,9 @@ const Inventory = {
   stockCardHTML(p) {
     const shelf = Utils.productShelfSummary(p);
     const eb = shelf.earliestBatch;
-    const cat = this.catName(p.categoryId);
-    const icon = this.placeholderIcon(p);
+    const cat = this.catName(p.categoryId, p);
     const stockCostVal = Utils.round2(p.stock * p.cost);
+    const fallbackImg = Utils.fallbackImageFor(p);
 
     let expiryBlock = '';
     if (p.stock > 0 && eb) {
@@ -372,7 +411,7 @@ const Inventory = {
       <div class="col-12 col-sm-6 col-md-6 col-lg-4 col-xl-3">
         <div class="prod-card ${p.status === 'inactive' ? 'is-inactive' : ''}" data-inv-card="${Utils.esc(p.id)}">
           <div class="prod-card-media" data-act="batches" data-id="${Utils.esc(p.id)}" title="Manage batches for ${Utils.esc(p.name)}">
-            ${p.image ? `<img src="${p.image}" alt="${Utils.esc(p.name)}">` : `<i class="bi bi-${icon}"></i>`}
+            <img src="${Utils.esc(Utils.productImageSrc(p))}" alt="${Utils.esc(p.name)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackImg}'">
             <div class="prod-card-top">
               <span class="prod-sku-chip mono">${Utils.esc(p.id)}</span>
               <div class="d-flex flex-column align-items-end gap-1">
@@ -385,7 +424,7 @@ const Inventory = {
           <div class="prod-card-body">
             <div class="prod-card-cat">
               <span class="text-truncate"><i class="bi bi-tag me-1"></i>${Utils.esc(cat)}</span>
-              <span class="text-muted fw-normal">${Utils.money(p.price)}/${Utils.esc(p.unit)}</span>
+              <span class="text-muted fw-normal">Cost: ${Utils.money(p.cost)}/${Utils.esc(p.unit)}</span>
             </div>
             <div class="prod-card-title" data-act="batches" data-id="${Utils.esc(p.id)}" title="${Utils.esc(p.name)}">
               ${Utils.esc(p.name)}
@@ -396,12 +435,12 @@ const Inventory = {
               <div>
                 <div class="prod-metric-label">Available Stock</div>
                 <div class="prod-metric-price">${Utils.num(p.stock)} <span class="fw-normal small text-muted">${Utils.esc(p.unit)}</span></div>
-                <div class="cell-sub">${shelf.expiredQty > 0 ? `<span class="text-danger fw-semibold">${Utils.num(shelf.sellableQty)} sellable</span>` : `Sellable: ${Utils.num(shelf.sellableQty)}`}</div>
+                <div class="cell-sub">${shelf.expiredQty > 0 ? `<span class="text-danger fw-semibold">${Utils.num(shelf.sellableQty)} usable</span>` : `Usable: ${Utils.num(shelf.sellableQty)}`}</div>
               </div>
               <div class="text-end">
                 <div class="prod-metric-label">Reorder / Value</div>
                 <div class="prod-metric-stock">≤ ${p.reorderLevel} <span class="fw-normal small text-muted">${Utils.esc(p.unit)}</span></div>
-                <div class="cell-sub">Cost: ${Utils.money(stockCostVal)}</div>
+                <div class="cell-sub">Value: ${Utils.money(stockCostVal)}</div>
               </div>
             </div>
 
@@ -449,10 +488,10 @@ const Inventory = {
     return `<tr>
       <td class="mono">${Utils.esc(p.id)}</td>
       <td><div class="d-flex align-items-center gap-2">${Utils.productThumb(p)}
-        <div><div class="cell-title">${Utils.esc(p.name)}</div>${p.status === 'inactive' ? '<div class="cell-sub">Inactive product</div>' : ''}</div></div></td>
-      <td>${Utils.esc(this.catName(p.categoryId))}</td>
+        <div><div class="cell-title">${Utils.esc(p.name)}</div><div class="cell-sub">Cost: ${Utils.money(p.cost)}/${Utils.esc(p.unit)}</div></div></div></td>
+      <td>${Utils.esc(this.catName(p.categoryId, p))}</td>
       <td class="text-end"><div class="fw-semibold">${Utils.num(p.stock)}</div>
-        ${shelf.expiredQty > 0 ? `<div class="cell-sub text-danger">${Utils.num(shelf.sellableQty)} sellable</div>` : ''}</td>
+        ${shelf.expiredQty > 0 ? `<div class="cell-sub text-danger">${Utils.num(shelf.sellableQty)} usable</div>` : ''}</td>
       <td class="text-end">${p.reorderLevel}</td>
       <td>${Utils.esc(p.unit)}</td>
       <td>${Utils.stockBadge(p)}</td>
@@ -542,9 +581,11 @@ const Inventory = {
     const list = this.filteredBatches();
     const pg = Utils.paginate(list, this.bstate.page, Prefs.get('pageSize'));
     this.bstate.page = pg.page;
-    document.getElementById('bat-tbody').innerHTML = pg.items.length ? pg.items.map(b => `<tr>
+    document.getElementById('bat-tbody').innerHTML = pg.items.length ? pg.items.map(b => {
+      const prod = this.products.find(x => x.id === b.productId) || { id: b.productId, name: b.productName };
+      return `<tr>
       <td class="mono small">${Utils.esc(b.id)}</td>
-      <td><div class="cell-title">${Utils.esc(b.productName)}</div><div class="cell-sub mono">${Utils.esc(b.productId)}</div></td>
+      <td><div class="d-flex align-items-center gap-2">${Utils.productThumb(prod)}<div><div class="cell-title">${Utils.esc(b.productName)}</div><div class="cell-sub mono">${Utils.esc(b.productId)}</div></div></div></td>
       <td>${Utils.esc(b.categoryName)}</td>
       <td class="small">${Utils.fmtDate(b.dateReceived)}</td>
       <td class="small fw-semibold">${Utils.fmtDate(b.expirationDate)}</td>
@@ -557,7 +598,8 @@ const Inventory = {
           <i class="bi bi-trash3 me-1"></i>${b.status.key === 'expired' ? 'Discard Expired' : 'Discard'}
         </button>
       </td>
-    </tr>`).join('') : Utils.emptyRow(10, 'check2-circle', 'No batches match this filter', 'All perishable batches are within safe shelf-life limits.');
+    </tr>`;
+    }).join('') : Utils.emptyRow(10, 'check2-circle', 'No batches match this filter', 'All perishable batches are within safe shelf-life limits.');
     document.getElementById('bat-pager').innerHTML = Utils.pagerHTML(pg);
   },
 
@@ -568,10 +610,13 @@ const Inventory = {
       title: `<i class="bi bi-boxes me-2"></i>Inventory Batches (FEFO) · ${Utils.esc(p.name)}`,
       size: 'lg',
       body: `
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 p-3 rounded-3 mb-3" style="background:var(--brand-lighter)">
-          <div>
-            <div class="fw-semibold">${Utils.esc(p.name)} <span class="mono text-muted">(${Utils.esc(p.id)})</span></div>
-            <div class="small text-muted">Total stock: <strong>${Utils.num(p.stock)} ${Utils.esc(p.unit)}</strong> · Sellable: <strong class="text-success">${Utils.num(shelf.sellableQty)} ${Utils.esc(p.unit)}</strong>${shelf.expiredQty > 0 ? ` · Expired: <strong class="text-danger">${Utils.num(shelf.expiredQty)} ${Utils.esc(p.unit)}</strong>` : ''}</div>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 rounded-3 mb-3" style="background:var(--brand-lighter)">
+          <div class="d-flex align-items-center gap-3">
+            ${Utils.productThumb(p)}
+            <div>
+              <div class="fw-semibold">${Utils.esc(p.name)} <span class="mono text-muted">(${Utils.esc(p.id)})</span></div>
+              <div class="small text-muted">Total stock: <strong>${Utils.num(p.stock)} ${Utils.esc(p.unit)}</strong> · Sellable: <strong class="text-success">${Utils.num(shelf.sellableQty)} ${Utils.esc(p.unit)}</strong>${shelf.expiredQty > 0 ? ` · Expired: <strong class="text-danger">${Utils.num(shelf.expiredQty)} ${Utils.esc(p.unit)}</strong>` : ''}</div>
+            </div>
           </div>
           <div class="d-flex gap-2">
             <button type="button" class="btn btn-sm btn-primary" id="bm-add-batch"><i class="bi bi-plus-lg me-1"></i>Add Batch (Stock In)</button>
@@ -602,6 +647,122 @@ const Inventory = {
       m.close();
       setTimeout(() => this.openStockForm(p, 'discard', bid), 250);
     }));
+  },
+
+  /* ---------- Add / Edit Raw Ingredient ---------- */
+  openIngredientForm(ing = null) {
+    const isEdit = !!ing;
+    const nextId = isEdit ? ing.id : Utils.nextId('ING-', this.products.map(p => p.id), 3);
+    const todayStr = Utils.dateKey(new Date());
+    const defaultExpStr = Utils.dateKey(Utils.addDays(new Date(), 14));
+    let imageData = ing ? (ing.image || (typeof Prefs !== 'undefined' && Prefs.defaultFoodImage ? Prefs.defaultFoodImage(ing) : '')) : '';
+
+    const m = Utils.modal({
+      title: `<i class="bi bi-${isEdit ? 'pencil-square' : 'plus-circle'} me-2"></i>${isEdit ? 'Edit Raw Ingredient' : 'Add Raw Ingredient'}`,
+      size: 'lg',
+      body: `<form id="ing-form" novalidate>
+        <div class="row g-3">
+          <div class="col-md-4"><label class="form-label">Ingredient ID</label>
+            <input class="form-control mono" name="id" value="${Utils.esc(nextId)}" readonly></div>
+          <div class="col-md-8"><label class="form-label required">Ingredient Name</label>
+            <input class="form-control" name="name" maxlength="80" value="${Utils.esc(ing ? ing.name : '')}" placeholder="e.g. Burger Buns, Mozzarella Cheese"></div>
+          <div class="col-md-6"><label class="form-label required">Category</label>
+            <select class="form-select" name="categoryId">
+              <option value="">Select category…</option>
+              ${this.categories.map(c => `<option value="${c.id}" ${ing && ing.categoryId === c.id ? 'selected' : ''}>${Utils.esc(c.name)}</option>`).join('')}
+            </select></div>
+          <div class="col-md-3"><label class="form-label required">Unit</label>
+            <select class="form-select" name="unit">
+              ${this.UNITS.map(u => `<option value="${u}" ${ing && ing.unit === u ? 'selected' : ''}>${u}</option>`).join('')}
+            </select></div>
+          <div class="col-md-3"><label class="form-label required">Unit Cost</label>
+            <div class="input-group"><span class="input-group-text">${Utils.currencySymbol()}</span>
+              <input type="number" step="0.01" min="0" class="form-control" name="cost" value="${ing ? ing.cost : ''}"></div></div>
+          <div class="col-md-4"><label class="form-label required">${isEdit ? 'Current Stock' : 'Initial Batch Qty'}</label>
+            <input type="number" step="1" min="0" class="form-control" name="stock" value="${ing ? ing.stock : 0}" ${isEdit ? 'readonly' : ''}></div>
+          <div class="col-md-4"><label class="form-label required">Reorder Level</label>
+            <input type="number" step="1" min="0" class="form-control" name="reorderLevel" value="${ing ? ing.reorderLevel : 10}"></div>
+          <div class="col-md-4"><label class="form-label">Default Shelf Life (Days)</label>
+            <input type="number" step="1" min="1" max="3650" class="form-control" name="defaultShelfLifeDays" value="${ing && ing.defaultShelfLifeDays ? ing.defaultShelfLifeDays : 14}"></div>
+          ${!isEdit ? `
+            <div class="col-md-6"><label class="form-label required">Date Received</label>
+              <input type="date" class="form-control" name="dateReceived" value="${todayStr}"></div>
+            <div class="col-md-6"><label class="form-label required">Initial Batch Expiration Date</label>
+              <input type="date" class="form-control" name="expirationDate" value="${defaultExpStr}"></div>
+          ` : ''}
+          <div class="col-md-8"><label class="form-label">Description / Storage Notes</label>
+            <input class="form-control" name="description" maxlength="200" value="${Utils.esc(ing ? ing.description : '')}" placeholder="Storage temperature or supplier notes"></div>
+          <div class="col-md-4"><label class="form-label">Photo (optional)</label>
+            <input type="file" accept="image/*" class="form-control" id="ing-img"></div>
+        </div></form>`,
+      footer: `<button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="ing-save"><i class="bi bi-check2 me-1"></i>${isEdit ? 'Save Changes' : 'Save Ingredient'}</button>`
+    });
+
+    const form = m.el.querySelector('#ing-form');
+    m.el.querySelector('#ing-img').addEventListener('change', async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try { imageData = await Utils.readImageFile(f); } catch (err) { Utils.toast(err.message, 'danger'); }
+    });
+
+    m.el.querySelector('#ing-save').addEventListener('click', async () => {
+      const d = Utils.formData(form), errors = {};
+      if (!d.name) errors.name = 'Ingredient name is required.';
+      if (!d.categoryId) errors.categoryId = 'Select a category.';
+      if (!Utils.isNonNegNumber(d.cost)) errors.cost = 'Enter a valid unit cost.';
+      if (!Utils.isWholeNumber(d.stock)) errors.stock = 'Enter a whole number.';
+      if (!Utils.isWholeNumber(d.reorderLevel)) errors.reorderLevel = 'Enter a whole number.';
+      if (!Utils.showErrors(form, errors)) return;
+
+      const now = new Date().toISOString();
+      const stock = parseInt(d.stock, 10);
+      const catObj = this.categories.find(c => c.id === d.categoryId);
+      const shelfDays = parseInt(d.defaultShelfLifeDays, 10) > 0 ? parseInt(d.defaultShelfLifeDays, 10) : 14;
+      const rec = {
+        id: nextId,
+        name: d.name,
+        categoryId: d.categoryId,
+        categoryName: catObj ? catObj.name : 'Kitchen Supply',
+        cost: Utils.round2(d.cost),
+        price: Utils.round2(d.cost),
+        stock,
+        reorderLevel: parseInt(d.reorderLevel, 10),
+        unit: d.unit || 'pc',
+        description: d.description,
+        status: 'active',
+        isIngredient: true,
+        image: imageData || (typeof Prefs !== 'undefined' && Prefs.defaultFoodImage ? Prefs.defaultFoodImage({ id: nextId, name: d.name, isIngredient: true }) : '') || 'assets/images/ingredients/placeholder-ingredient.svg',
+        defaultShelfLifeDays: shelfDays,
+        batches: isEdit ? (ing.batches || []) : (stock > 0 ? [{
+          id: `${nextId}-B01`,
+          dateReceived: d.dateReceived || todayStr,
+          expirationDate: d.expirationDate || defaultExpStr,
+          qty: stock,
+          initialQty: stock,
+          note: 'Initial ingredient batch'
+        }] : []),
+        createdAt: isEdit ? ing.createdAt : now,
+        updatedAt: now
+      };
+
+      await DB.run(['products', 'movements'], 'readwrite', async tx => {
+        tx.objectStore('products').put(rec);
+        if (!isEdit && stock > 0) {
+          const ms = tx.objectStore('movements');
+          const mid = await DB.nextIdIn(ms, 'MOV-', 6);
+          ms.add(this.buildMovement({
+            id: mid, product: rec, type: 'Initial Stock', quantity: stock,
+            previousStock: 0, newStock: stock, reason: 'Initial ingredient batch',
+            date: now, batchId: `${nextId}-B01`, dateReceived: d.dateReceived || todayStr, expirationDate: d.expirationDate || defaultExpStr
+          }));
+        }
+      });
+      Utils.toast(`Ingredient "${rec.name}" saved.`);
+      m.close();
+      await this.load();
+      App.dataChanged();
+    });
   },
 
   /* ---------- Stock In / Out / Discard / Adjustment ---------- */

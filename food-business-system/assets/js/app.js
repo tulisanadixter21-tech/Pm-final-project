@@ -195,21 +195,22 @@ const App = {
   /* ---------------- Notifications ---------------- */
   async refreshNotifications() {
     try {
-      const products = (await DB.getAll('products')).filter(p => p.status === 'active');
-      const out = products.filter(p => Utils.stockStatus(p).key === 'out');
-      const low = products.filter(p => Utils.stockStatus(p).key === 'low');
+      const allActive = (await DB.getAll('products')).filter(p => p.status === 'active');
+      const ingredients = allActive.filter(p => p.isIngredient || String(p.id || '').startsWith('ING-'));
+      const out = ingredients.filter(p => Utils.stockStatus(p).key === 'out');
+      const low = ingredients.filter(p => Utils.stockStatus(p).key === 'low');
       const items = [];
       let expAlertCount = 0;
 
       if (Prefs.get('expiryAlerts') !== false) {
-        products.forEach(p => {
+        ingredients.forEach(p => {
           const sum = Utils.productShelfSummary(p);
           if (sum.expiredQty > 0) {
             expAlertCount++;
             items.push({
               icon: 'calendar-x', tone: 'red',
               title: `${p.name}: ${Utils.num(sum.expiredQty)} ${p.unit} expired`,
-              text: 'Discard expired batch(es) in Inventory. Blocked from POS sales.',
+              text: 'Discard expired ingredient batch(es) in Inventory.',
               href: '#/inventory'
             });
           }

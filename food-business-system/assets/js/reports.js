@@ -25,11 +25,19 @@ const Reports = {
   ],
 
   async render(el) {
-    const [products, categories, rawTxns] = await Promise.all([
+    if (typeof Prefs !== 'undefined' && typeof Prefs.syncProductImages === 'function') {
+      await Prefs.syncProductImages();
+    }
+    const [allProducts, categories, rawTxns] = await Promise.all([
       DB.getAll('products'), DB.getAll('categories'), DB.getAll('transactions')
     ]);
-    this.products = products;
-    this.categories = categories.sort((a, b) => a.name.localeCompare(b.name));
+    this.menuProducts = allProducts.filter(p => !p.isIngredient && !String(p.id || '').startsWith('ING-'));
+    this.ingredients = allProducts.filter(p => p.isIngredient || String(p.id || '').startsWith('ING-'));
+    this.products = this.menuProducts;
+    const ingCats = (typeof Prefs !== 'undefined' && Array.isArray(Prefs.INGREDIENT_CATEGORIES)) ? Prefs.INGREDIENT_CATEGORIES : [];
+    const catMap = new Map();
+    [...categories, ...ingCats].forEach(c => { if (c && c.id) catMap.set(c.id, c); });
+    this.categories = Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name));
     this.allTxns = rawTxns;
     this.txns = Stats.completed(rawTxns).sort((a, b) => b.date.localeCompare(a.date));
     this.applyPreset(this.state.preset, false);
@@ -117,7 +125,7 @@ const Reports = {
             </div>
             <div class="table-wrap">
               <table class="table table-sm table-hover">
-                <thead><tr><th>Product</th><th class="text-end">Stock</th><th class="text-end">Units Sold</th><th class="text-end">Revenue</th><th>Shelf Status</th></tr></thead>
+                <thead><tr><th>Product</th><th class="text-end">Stock</th><th class="text-end">Units Sold</th><th class="text-end">Revenue</th><th>Stock Status</th></tr></thead>
                 <tbody id="rep-slow-summary"></tbody>
               </table>
             </div>
@@ -166,7 +174,11 @@ const Reports = {
     this.draw();
   },
 
-  catName(id) { const c = (this.categories || []).find(x => x.id === id); return c ? c.name : 'Uncategorized'; },
+  catName(id, item) {
+    if (item && item.categoryName) return item.categoryName;
+    const c = (this.categories || []).find(x => x.id === id);
+    return c ? c.name : 'Uncategorized';
+  },
 
   applyPreset(preset, updateInputs = true) {
     const now = new Date();
@@ -230,23 +242,24 @@ const Reports = {
     const tot = Stats.totals(txns);
     const bestByQty = Stats.productSales(txns, 'qty')[0];
     const bestByRev = Stats.productSales(txns, 'revenue')[0];
-    const prods = this.state.category ? this.products.filter(p => p.categoryId === this.state.category) : this.products;
-    let low = 0, out = 0, invCost = 0, invRetail = 0, expUnits = 0;
-    prods.forEach(p => {
+    const ings = this.state.category ? this.ingredients.filter(p => p.categoryId === this.state.category) : this.ingredients;
+    let low = 0, out = 0, invCost = 0, expUnits = 0;
+    ings.forEach(p => {
       const st = Utils.stockStatus(p).key;
       if (st === 'low') low++;
       if (st === 'out') out++;
       invCost += p.stock * p.cost;
-      invRetail += p.stock * p.price;
       expUnits += Utils.productShelfSummary(p).expiredQty;
     });
+    const menuRetail = (this.state.category ? this.menuProducts.filter(p => p.categoryId === this.state.category) : this.menuProducts)
+      .reduce((s, p) => s + p.stock * p.price, 0);
     document.getElementById('rep-kpis').innerHTML = `
       <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'cash-coin', tone: 'green', label: 'Total Sales Revenue', value: Utils.money(tot.revenue), sub: `Est. profit ${Utils.money(tot.profit)}` })}</div>
       <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'receipt', tone: 'blue', label: 'Transactions & Avg', value: Utils.num(tot.count), sub: `Avg. order ${Utils.money(tot.avgOrder)}` })}</div>
       <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'bag-check', tone: 'purple', label: 'Products Sold', value: Utils.num(tot.items), sub: this.fmtDeltaBadge(cmp.deltas.items) })}</div>
       <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'trophy', tone: 'teal', label: 'Best-Seller (Qty)', value: bestByQty ? Utils.esc(bestByQty.name) : '—', sub: bestByQty ? `${Utils.num(bestByQty.qty)} sold · Top rev: ${Utils.esc(bestByRev.name)}` : 'No sales in range' })}</div>
       <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'exclamation-triangle', tone: 'amber', label: 'Low / Out / Expired', value: `${low} / ${out} / ${expUnits}`, sub: `${low} low · ${out} out · ${expUnits} exp units` })}</div>
-      <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'box-seam', tone: 'gray', label: 'Inventory Value', value: Utils.money(invCost), sub: `Retail ${Utils.money(invRetail)}` })}</div>`;
+      <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'box-seam', tone: 'gray', label: 'Inventory Value', value: Utils.money(invCost), sub: `Menu retail ${Utils.money(menuRetail)}` })}</div>`;
   },
 
   renderTrendsAndBottom(txns, from, to) {
@@ -335,21 +348,20 @@ const Reports = {
     }
 
     const slow = Stats.slowMovers(
-      this.state.category ? this.products.filter(p => p.categoryId === this.state.category) : this.products,
+      this.state.category ? this.menuProducts.filter(p => p.categoryId === this.state.category) : this.menuProducts,
       txns,
       this.categories
     ).slice(0, 6);
     const slowEl = document.getElementById('rep-slow-summary');
     if (slowEl) {
       slowEl.innerHTML = slow.length ? slow.map(s => {
-        const prod = this.products.find(p => p.id === s.productId);
-        const shelf = prod ? Utils.productShelfSummary(prod) : null;
+        const prod = this.menuProducts.find(p => p.id === s.productId);
         return `<tr>
           <td><div class="fw-semibold small">${Utils.esc(s.name)}</div><div class="cell-sub">${Utils.esc(s.category)}</div></td>
           <td class="text-end">${Utils.num(s.stock)} <span class="cell-sub">${Utils.esc(s.unit)}</span></td>
           <td class="text-end">${s.qty === 0 ? '<span class="badge badge-soft-secondary">0 sold</span>' : Utils.num(s.qty)}</td>
           <td class="text-end small">${Utils.money(s.revenue)}</td>
-          <td>${shelf ? Utils.shelfBadge(shelf.overallStatus) : '—'}</td>
+          <td>${prod ? Utils.stockBadge(prod) : '—'}</td>
         </tr>`;
       }).join('') : Utils.emptyRow(5, 'box', 'No active products');
     }
@@ -493,15 +505,15 @@ const Reports = {
     }
 
     if (type === 'slow-movers') {
-      const baseProds = this.products.filter(p => !catFilter || p.categoryId === catFilter);
+      const baseProds = this.menuProducts.filter(p => !catFilter || p.categoryId === catFilter);
       const rows = Stats.slowMovers(baseProds, txns, this.categories).map((r, idx) => {
         const prod = prodMap.get(r.productId);
-        const shelf = prod ? Utils.productShelfSummary(prod) : null;
+        const st = prod ? Utils.stockStatus(prod) : { label: '—' };
         return {
           rank: idx + 1,
           ...r,
-          shelfLabel: shelf ? shelf.overallStatus.label : '—',
-          shelfHtml: shelf ? Utils.shelfBadge(shelf.overallStatus) : '—',
+          shelfLabel: st.label,
+          shelfHtml: prod ? Utils.stockBadge(prod) : '—',
           lastSoldLabel: r.lastSold ? Utils.fmtDate(r.lastSold) : 'No sales in range'
         };
       });
@@ -517,7 +529,7 @@ const Reports = {
           { label: 'Period Revenue', value: r => Utils.money(r.revenue), raw: r => r.revenue, align: 'end' },
           { label: 'Stock on Hand', value: r => `${r.stock} ${r.unit}`, raw: r => r.stock, align: 'end' },
           { label: 'Tied Capital (Cost)', value: r => Utils.money(r.stockValueCost), raw: r => r.stockValueCost, align: 'end' },
-          { label: 'Shelf Status', html: r => r.shelfHtml, value: r => r.shelfLabel },
+          { label: 'Stock Status', html: r => r.shelfHtml, value: r => r.shelfLabel },
           { label: 'Last Sold', key: 'lastSoldLabel' }
         ],
         rows,
@@ -536,7 +548,7 @@ const Reports = {
 
     if (type === 'expiration') {
       const rows = [];
-      this.products
+      this.ingredients
         .filter(p => !catFilter || p.categoryId === catFilter)
         .forEach(p => {
           const sum = Utils.productShelfSummary(p);
@@ -544,7 +556,7 @@ const Reports = {
             rows.push({
               productId: p.id,
               name: p.name,
-              category: this.catName(p.categoryId),
+              category: this.catName(p.categoryId, p),
               batchId: b.id,
               dateReceived: Utils.fmtDate(b.dateReceived),
               expirationDate: Utils.fmtDate(b.expirationDate),
@@ -563,8 +575,8 @@ const Reports = {
       rows.forEach(r => { if (counts[r.statusLabel] !== undefined) counts[r.statusLabel] += r.qty; });
       return {
         columns: [
-          { label: 'Product ID', key: 'productId', mono: true },
-          { label: 'Product Name', key: 'name', bold: true },
+          { label: 'Ingredient ID', key: 'productId', mono: true },
+          { label: 'Ingredient Name', key: 'name', bold: true },
           { label: 'Category', key: 'category' },
           { label: 'Batch ID', key: 'batchId', mono: true },
           { label: 'Date Received', key: 'dateReceived' },
@@ -590,27 +602,26 @@ const Reports = {
       };
     }
 
-    // Inventory & Low Stock reports
-    const list = this.products
+    // Inventory & Low Stock reports (Raw Ingredients)
+    const list = this.ingredients
       .filter(p => (!catFilter || p.categoryId === catFilter) && (type !== 'low-stock' || Utils.stockStatus(p).key !== 'in'))
       .map(p => {
         const shelf = Utils.productShelfSummary(p);
         return {
-          ...p, category: this.catName(p.categoryId),
+          ...p, category: this.catName(p.categoryId, p),
           statusLabel: Utils.stockStatus(p).label,
           shelfLabel: shelf.overallStatus.label,
           shelfHtml: Utils.shelfBadge(shelf.overallStatus),
           shortfall: Math.max(0, p.reorderLevel - p.stock),
-          costValue: Utils.round2(p.stock * p.cost),
-          retailValue: Utils.round2(p.stock * p.price)
+          costValue: Utils.round2(p.stock * p.cost)
         };
       })
       .sort((a, b) => a.stock - b.stock || a.name.localeCompare(b.name));
 
     return {
       columns: [
-        { label: 'Product ID', key: 'id', mono: true },
-        { label: 'Product Name', key: 'name', bold: true },
+        { label: 'Ingredient ID', key: 'id', mono: true },
+        { label: 'Ingredient Name', key: 'name', bold: true },
         { label: 'Category', key: 'category' },
         { label: 'Available Stock', value: r => `${Utils.num(r.stock)} ${r.unit}`, raw: r => r.stock, align: 'end', bold: true },
         { label: 'Reorder Level', key: 'reorderLevel', align: 'end' },
@@ -618,8 +629,7 @@ const Reports = {
         { label: 'Stock Status', html: r => Utils.stockBadge(r), value: r => r.statusLabel },
         { label: 'Shelf-Life Status', html: r => r.shelfHtml, value: r => r.shelfLabel },
         { label: 'Unit Cost', value: r => Utils.money(r.cost), raw: r => r.cost, align: 'end' },
-        { label: 'Inventory Value (Cost)', value: r => Utils.money(r.costValue), raw: r => r.costValue, align: 'end', bold: true },
-        { label: 'Retail Value', value: r => Utils.money(r.retailValue), raw: r => r.retailValue, align: 'end' }
+        { label: 'Inventory Value (Cost)', value: r => Utils.money(r.costValue), raw: r => r.costValue, align: 'end', bold: true }
       ],
       rows: list,
       searchText: r => `${r.id} ${r.name} ${r.category} ${r.statusLabel} ${r.shelfLabel}`,

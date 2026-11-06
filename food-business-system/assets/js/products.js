@@ -1,16 +1,16 @@
 /* =========================================================
-   products.js - Product Management (Responsive Card Grid &
-   List Views, CRUD, categories, images, and FEFO shelf life)
+   products.js - Finished Menu Item Management (Responsive Card
+   Grid & List Views, CRUD, categories, images, and servings)
    ========================================================= */
 'use strict';
 
 const Products = {
   title: 'Products',
-  subtitle: 'Manage menu items, prices, categories, shelf life and product details',
+  subtitle: 'Manage finished menu items, prices, categories, photos and available servings',
   state: { search: '', category: '', availability: '', status: '', sort: 'name-asc', viewMode: 'grid', page: 1 },
   products: [],
   categories: [],
-  UNITS: ['pc', 'serving', 'cup', 'slice', 'plate', 'box', 'bottle', 'pack', 'bowl', 'set', 'kg', 'g', 'L', 'mL'],
+  UNITS: ['pc', 'serving', 'cup', 'slice', 'plate', 'box', 'bottle', 'pack', 'bowl', 'set'],
 
   async render(el) {
     const savedMode = Prefs.get('productViewMode');
@@ -23,7 +23,7 @@ const Products = {
         <div class="card-body">
           <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
             <div class="d-flex align-items-center gap-2 flex-wrap">
-              <span class="fw-semibold"><i class="bi bi-grid-3x3-gap text-primary me-1"></i>Product Catalog</span>
+              <span class="fw-semibold"><i class="bi bi-grid-3x3-gap text-primary me-1"></i>Menu Catalog</span>
               <span class="badge badge-soft-secondary" id="prod-count-badge">0 products</span>
             </div>
             <div class="d-flex gap-2 flex-wrap align-items-center">
@@ -63,8 +63,6 @@ const Products = {
               <option value="price-desc">Sort: Price (High–Low)</option>
               <option value="stock-asc">Sort: Quantity (Low–High)</option>
               <option value="stock-desc">Sort: Quantity (High–Low)</option>
-              <option value="expiry-asc">Sort: Expiration (Soonest)</option>
-              <option value="expiry-desc">Sort: Expiration (Latest)</option>
               <option value="id-asc">Sort: Product ID / SKU</option>
               <option value="newest">Sort: Newest First</option>
             </select>
@@ -78,6 +76,9 @@ const Products = {
 
     el.querySelector('#prod-avail').value = s.availability;
     el.querySelector('#prod-status').value = s.status;
+    if (!['name-asc', 'name-desc', 'price-asc', 'price-desc', 'stock-asc', 'stock-desc', 'id-asc', 'newest'].includes(s.sort)) {
+      s.sort = 'name-asc';
+    }
     el.querySelector('#prod-sort').value = s.sort;
 
     el.querySelector('#prod-search').addEventListener('input', Utils.debounce(e => {
@@ -124,9 +125,18 @@ const Products = {
   },
 
   async load() {
-    [this.products, this.categories] = await Promise.all([DB.getAll('products'), DB.getAll('categories')]);
-    this.products.forEach(p => Utils.ensureProductBatches(p));
-    this.categories.sort((a, b) => a.name.localeCompare(b.name));
+    if (typeof Prefs !== 'undefined' && typeof Prefs.syncProductImages === 'function') {
+      await Prefs.syncProductImages();
+    }
+    const [allProducts, categories] = await Promise.all([DB.getAll('products'), DB.getAll('categories')]);
+    // Products module strictly shows finished menu items (excludes raw ingredients)
+    this.products = allProducts.filter(p => !p.isIngredient && !String(p.id || '').startsWith('ING-'));
+    this.products.forEach(p => {
+      if (!p.image && typeof Prefs !== 'undefined' && Prefs.defaultFoodImage) {
+        p.image = Prefs.defaultFoodImage(p) || '';
+      }
+    });
+    this.categories = categories.sort((a, b) => a.name.localeCompare(b.name));
     const sel = document.getElementById('prod-cat');
     if (sel) {
       if (this.state.category && !this.categories.some(c => c.id === this.state.category)) this.state.category = '';
@@ -138,22 +148,6 @@ const Products = {
 
   catName(id) { const c = this.categories.find(x => x.id === id); return c ? c.name : 'Uncategorized'; },
 
-  /** Returns a category-appropriate icon for the product image placeholder. */
-  placeholderIcon(p) {
-    const cat = this.catName(p.categoryId).toLowerCase();
-    if (cat.includes('beverage') || cat.includes('drink') || cat.includes('tea')) return 'cup-straw';
-    if (cat.includes('dessert') || cat.includes('cake') || cat.includes('pastry')) return 'cake2';
-    if (cat.includes('pizza')) return 'pie-chart';
-    if (cat.includes('pasta') || cat.includes('noodle')) return 'bowl-hot';
-    return 'egg-fried';
-  },
-
-  /** Helper returning earliest expiration date string for sorting (`9999-12-31` when none). */
-  earliestExpiryKey(p) {
-    const shelf = Utils.productShelfSummary(p);
-    return (shelf.earliestBatch && shelf.earliestBatch.expirationDate) || '9999-12-31';
-  },
-
   filtered() {
     const s = this.state, q = s.search.toLowerCase();
     const list = this.products.filter(p =>
@@ -162,18 +156,12 @@ const Products = {
       (!s.availability || Utils.stockStatus(p).key === s.availability) &&
       (!s.status || p.status === s.status));
 
-    const [field, dir] = s.sort.split('-');
+    const [field, dir] = (s.sort || 'name-asc').split('-');
     const m = dir === 'desc' ? -1 : 1;
     list.sort((a, b) => {
       if (s.sort === 'newest') return (b.createdAt || '').localeCompare(a.createdAt || '');
-      if (field === 'expiry') {
-        const ea = this.earliestExpiryKey(a);
-        const eb = this.earliestExpiryKey(b);
-        if (ea !== eb) return ea.localeCompare(eb) * m;
-        return a.name.localeCompare(b.name);
-      }
-      if (field === 'name' || field === 'id') return a[field].localeCompare(b[field]) * m;
-      return (a[field] - b[field]) * m || a.name.localeCompare(b.name);
+      if (field === 'name' || field === 'id') return String(a[field] || '').localeCompare(String(b[field] || '')) * m;
+      return ((Number(a[field]) || 0) - (Number(b[field]) || 0)) * m || a.name.localeCompare(b.name);
     });
     return list;
   },
@@ -201,11 +189,11 @@ const Products = {
               <thead><tr>
                 <th>Product</th><th>SKU / ID</th><th>Category</th>
                 <th class="text-end">Selling Price</th><th class="text-end">Cost Price</th>
-                <th class="text-end">Current Stock</th><th>Stock Status</th>
-                <th>Expiration &amp; Shelf Life</th><th>Status</th><th class="text-end">Actions</th>
+                <th class="text-end">Available Servings</th><th>Stock Status</th>
+                <th>Status</th><th class="text-end">Actions</th>
               </tr></thead>
               <tbody id="prod-tbody">${pg.items.length ? pg.items.map(p => this.listRowHTML(p)).join('')
-                : Utils.emptyRow(10, 'box-seam', this.products.length ? 'No products match your filters' : 'No products yet',
+                : Utils.emptyRow(9, 'box-seam', this.products.length ? 'No products match your filters' : 'No products yet',
                     this.products.length ? 'Try changing the search or filters.' : 'Click "Add Product" to create your first menu item.')}</tbody>
             </table>
           </div>
@@ -223,33 +211,14 @@ const Products = {
   },
 
   cardHTML(p) {
-    const shelf = Utils.productShelfSummary(p);
-    const eb = shelf.earliestBatch;
     const cat = this.catName(p.categoryId);
-    const icon = this.placeholderIcon(p);
-
-    let expiryBlock = '';
-    if (p.stock > 0 && eb) {
-      expiryBlock = `
-        <div class="d-flex align-items-center gap-1 flex-wrap">
-          ${Utils.shelfBadge(shelf.status)}
-          <span class="fw-semibold">${Utils.esc(eb.status.daysText)}</span>
-        </div>
-        <div class="text-muted small">
-          <i class="bi bi-calendar-event me-1"></i>Exp: ${Utils.fmtDate(eb.expirationDate)}
-          ${shelf.expiredQty > 0 ? `<span class="text-danger fw-semibold ms-1">(${Utils.num(shelf.expiredQty)} exp)</span>` : ''}
-        </div>`;
-    } else {
-      expiryBlock = `
-        <span class="text-muted small"><i class="bi bi-hourglass me-1"></i>Shelf life: ${p.defaultShelfLifeDays || 7}d default</span>
-        <span class="text-muted small">No active batch</span>`;
-    }
+    const fb = Utils.fallbackImageFor(p);
 
     return `
       <div class="col-12 col-sm-6 col-md-6 col-lg-4 col-xl-3">
         <div class="prod-card ${p.status === 'inactive' ? 'is-inactive' : ''}" data-card-id="${Utils.esc(p.id)}">
           <div class="prod-card-media" data-act="view" data-id="${Utils.esc(p.id)}" title="View ${Utils.esc(p.name)} details">
-            ${p.image ? `<img src="${p.image}" alt="${Utils.esc(p.name)}">` : `<i class="bi bi-${icon}"></i>`}
+            <img src="${Utils.esc(Utils.productImageSrc(p))}" alt="${Utils.esc(p.name)}" loading="lazy" onerror="this.onerror=null;this.src='${fb}'">
             <div class="prod-card-top">
               <span class="prod-sku-chip mono">${Utils.esc(p.id)}</span>
               <div class="d-flex flex-column align-items-end gap-1">
@@ -269,21 +238,17 @@ const Products = {
             </div>
             <div class="prod-card-desc">${Utils.esc(p.description || 'No description provided.')}</div>
 
-            <div class="prod-card-metrics">
+            <div class="prod-card-metrics mt-auto mb-0">
               <div>
                 <div class="prod-metric-label">Selling Price</div>
                 <div class="prod-metric-price">${Utils.money(p.price)}</div>
                 <div class="cell-sub">Cost: ${Utils.money(p.cost)}</div>
               </div>
               <div class="text-end">
-                <div class="prod-metric-label">Current Stock</div>
+                <div class="prod-metric-label">Available</div>
                 <div class="prod-metric-stock">${Utils.num(p.stock)} <span class="fw-normal small text-muted">${Utils.esc(p.unit)}</span></div>
-                <div class="cell-sub">${shelf.expiredQty > 0 ? `<span class="text-danger">${Utils.num(shelf.sellableQty)} sellable</span>` : `Reorder ≤ ${p.reorderLevel}`}</div>
+                <div class="cell-sub">Reorder ≤ ${p.reorderLevel}</div>
               </div>
-            </div>
-
-            <div class="prod-card-expiry">
-              ${expiryBlock}
             </div>
           </div>
 
@@ -305,8 +270,6 @@ const Products = {
   },
 
   listRowHTML(p) {
-    const shelf = Utils.productShelfSummary(p);
-    const eb = shelf.earliestBatch;
     return `
       <tr data-row-id="${Utils.esc(p.id)}">
         <td><div class="d-flex align-items-center gap-2">${Utils.productThumb(p)}
@@ -317,9 +280,6 @@ const Products = {
         <td class="text-end text-muted">${Utils.money(p.cost)}</td>
         <td class="text-end">${Utils.num(p.stock)} <span class="cell-sub">${Utils.esc(p.unit)}</span></td>
         <td>${Utils.stockBadge(p)}</td>
-        <td>${p.stock > 0 && eb
-          ? `${Utils.shelfBadge(shelf.status)}<div class="cell-sub">Exp ${Utils.fmtDate(eb.expirationDate)} · ${Utils.esc(eb.status.daysText)}</div>`
-          : '<span class="text-muted small">—</span>'}</td>
         <td><span class="badge badge-soft-${p.status === 'active' ? 'success' : 'secondary'} text-capitalize">${p.status}</span></td>
         <td class="text-end text-nowrap">
           <button class="btn btn-light btn-action" data-act="view" data-id="${p.id}" title="View"><i class="bi bi-eye"></i></button>
@@ -332,16 +292,11 @@ const Products = {
   /* ---------- Add / Edit ---------- */
   async openForm(product = null) {
     const isEdit = !!product;
-    const todayStr = Utils.dateKey(new Date());
-    const defaultShelf = product && Number(product.defaultShelfLifeDays) > 0 ? Number(product.defaultShelfLifeDays) : 7;
     const p = product || {
       id: Utils.nextId('P', this.products.map(x => x.id), 3), name: '', categoryId: '', description: '', price: '', cost: '',
-      stock: 0, reorderLevel: App.settings.lowStockThreshold ?? 10, unit: 'pc',
-      defaultShelfLifeDays: defaultShelf, image: '', status: 'active'
+      stock: 0, reorderLevel: App.settings.lowStockThreshold ?? 10, unit: 'serving',
+      image: '', status: 'active'
     };
-    const existingShelf = isEdit ? Utils.productShelfSummary(p) : null;
-    const defaultExpStr = (existingShelf && existingShelf.earliestBatch && existingShelf.earliestBatch.expirationDate)
-      || Utils.dateKey(Utils.addDays(new Date(), p.defaultShelfLifeDays || 7));
     if (!this.categories.length) { Utils.toast('Please create at least one category first.', 'warning'); this.manageCategories(); return; }
     let image = p.image || '';
     const m = Utils.modal({
@@ -350,7 +305,7 @@ const Products = {
       body: `<form id="prod-form" novalidate><div class="row g-3">
         <div class="col-md-4">
           <label class="form-label">Product Image</label>
-          <div class="img-preview mb-2" id="img-preview">${image ? `<img src="${image}" alt="">` : '<i class="bi bi-image"></i>'}</div>
+          <div class="img-preview mb-2" id="img-preview"><img src="${Utils.esc(image || Utils.FALLBACK_FOOD_IMAGE)}" alt="${Utils.esc(p.name || 'Product image preview')}" onerror="this.onerror=null;this.src='${Utils.FALLBACK_FOOD_IMAGE}'"></div>
           <input type="file" accept="image/*" class="form-control form-control-sm" id="img-input">
           <button type="button" class="btn btn-link btn-sm text-danger px-0 ${image ? '' : 'd-none'}" id="img-remove"><i class="bi bi-x-circle me-1"></i>Remove image</button>
           <div class="form-text">JPG/PNG up to 5 MB. Images are resized and stored locally.</div>
@@ -373,22 +328,13 @@ const Products = {
           <input type="number" class="form-control" name="price" min="0" step="0.01" value="${p.price}"></div>
         <div class="col-sm-6 col-md-3"><label class="form-label required">Cost Price (${Utils.currencySymbol()})</label>
           <input type="number" class="form-control" name="cost" min="0" step="0.01" value="${p.cost}"></div>
-        <div class="col-sm-4 col-md-2"><label class="form-label required">${isEdit ? 'Current Stock' : 'Initial Stock'}</label>
+        <div class="col-sm-4 col-md-2"><label class="form-label required">${isEdit ? 'Available Servings' : 'Initial Servings'}</label>
           <input type="number" class="form-control" name="stock" min="0" step="1" value="${p.stock}"></div>
         <div class="col-sm-4 col-md-2"><label class="form-label required">Reorder Level</label>
           <input type="number" class="form-control" name="reorderLevel" min="0" step="1" value="${p.reorderLevel}"></div>
         <div class="col-sm-4 col-md-2"><label class="form-label">Status</label>
           <select class="form-select" name="status"><option value="active">Active</option><option value="inactive" ${p.status === 'inactive' ? 'selected' : ''}>Inactive</option></select></div>
 
-        <div class="col-sm-4"><label class="form-label">Default Shelf Life (Days)</label>
-          <input type="number" class="form-control" name="defaultShelfLifeDays" min="1" step="1" value="${p.defaultShelfLifeDays || 7}">
-          <div class="form-text">Used to pre-fill expiration dates on new stock deliveries.</div></div>
-        <div class="col-sm-4"><label class="form-label">${isEdit ? 'Batch Date Received' : 'Initial Batch Date Received'}</label>
-          <input type="date" class="form-control" name="dateReceived" value="${todayStr}"></div>
-        <div class="col-sm-4"><label class="form-label">${isEdit ? 'Earliest / New Batch Expiration' : 'Initial Batch Expiration Date'}</label>
-          <input type="date" class="form-control" name="expirationDate" value="${defaultExpStr}"></div>
-
-        ${isEdit ? '<div class="col-12"><div class="form-text"><i class="bi bi-info-circle me-1"></i>Changing the stock here records an <strong>Adjustment</strong> and updates batches automatically. To manage multiple perishable batches, use the <strong>Inventory</strong> module.</div></div>' : ''}
         <div class="col-12"><div class="small text-muted" id="margin-info"></div></div>
       </div></form>`,
       footer: `<button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
@@ -404,11 +350,6 @@ const Products = {
     };
     form.price.addEventListener('input', updateMargin);
     form.cost.addEventListener('input', updateMargin);
-    form.defaultShelfLifeDays.addEventListener('input', () => {
-      const days = parseInt(form.defaultShelfLifeDays.value, 10);
-      const rec = Utils.parseDate(form.dateReceived.value) || new Date();
-      if (days > 0) form.expirationDate.value = Utils.dateKey(Utils.addDays(rec, days));
-    });
     updateMargin();
     m.el.querySelector('#img-input').addEventListener('change', async e => {
       const file = e.target.files[0];
@@ -421,7 +362,7 @@ const Products = {
     });
     removeBtn.addEventListener('click', () => {
       image = '';
-      preview.innerHTML = '<i class="bi bi-image"></i>';
+      preview.innerHTML = `<img src="${Utils.FALLBACK_FOOD_IMAGE}" alt="Placeholder">`;
       m.el.querySelector('#img-input').value = '';
       removeBtn.classList.add('d-none');
     });
@@ -461,95 +402,68 @@ const Products = {
     if (!Utils.isMoney(d.cost)) e.cost = 'Enter a valid cost price (0 or more, max 2 decimals).';
     if (!Utils.isWholeNumber(d.stock)) e.stock = 'Stock must be a whole number of 0 or more.';
     if (!Utils.isWholeNumber(d.reorderLevel)) e.reorderLevel = 'Reorder level must be a whole number of 0 or more.';
-    if (d.defaultShelfLifeDays !== undefined && d.defaultShelfLifeDays !== '' && (!Utils.isWholeNumber(d.defaultShelfLifeDays) || Number(d.defaultShelfLifeDays) < 1)) {
-      e.defaultShelfLifeDays = 'Enter a positive whole number of days.';
-    }
     return e;
   },
 
-  /** Saves the product, maintains FEFO batches, and records a stock movement atomically when stock changes. */
+  /** Saves the menu product and records a stock movement atomically when stock changes. */
   async save(d, image, existing) {
     const now = new Date();
     const nowIso = now.toISOString();
-    const shelfDays = parseInt(d.defaultShelfLifeDays, 10) > 0 ? parseInt(d.defaultShelfLifeDays, 10) : (existing && existing.defaultShelfLifeDays) || 7;
-    const recDate = d.dateReceived || Utils.dateKey(now);
-    const expDate = d.expirationDate || Utils.dateKey(Utils.addDays(Utils.parseDate(recDate) || now, shelfDays));
+    const idUpper = existing ? existing.id : String(d.id || '').toUpperCase();
+    const isIng = Boolean((existing && existing.isIngredient) || d.isIngredient || idUpper.startsWith('ING-'));
 
     const record = {
       ...(existing || {}),
-      id: existing ? existing.id : d.id.toUpperCase(),
-      name: d.name, categoryId: d.categoryId, description: d.description || '', unit: d.unit,
-      price: Utils.round2(d.price), cost: Utils.round2(d.cost), stock: parseInt(d.stock, 10),
+      id: idUpper,
+      name: d.name,
+      categoryId: d.categoryId,
+      categoryName: d.categoryName || (existing && existing.categoryName) || '',
+      description: d.description || '',
+      unit: d.unit,
+      price: Utils.round2(d.price ?? d.cost ?? 0),
+      cost: Utils.round2(d.cost ?? 0),
+      stock: parseInt(d.stock, 10),
       reorderLevel: parseInt(d.reorderLevel, 10),
-      defaultShelfLifeDays: shelfDays,
-      image, status: d.status === 'inactive' ? 'inactive' : 'active',
-      createdAt: existing ? existing.createdAt : nowIso, updatedAt: nowIso
+      isIngredient: isIng,
+      batches: isIng ? ((existing && existing.batches) || []) : [],
+      image: image || (typeof Prefs !== 'undefined' && Prefs.defaultFoodImage ? Prefs.defaultFoodImage(idUpper, d.name) : ''),
+      status: d.status === 'inactive' ? 'inactive' : 'active',
+      createdAt: existing ? existing.createdAt : nowIso,
+      updatedAt: nowIso
     };
+
+    if (isIng) {
+      const shelfDays = parseInt(d.defaultShelfLifeDays, 10) > 0 ? parseInt(d.defaultShelfLifeDays, 10) : (existing && existing.defaultShelfLifeDays) || 7;
+      record.defaultShelfLifeDays = shelfDays;
+      const recDate = d.dateReceived || Utils.dateKey(now);
+      const expDate = d.expirationDate || Utils.dateKey(Utils.addDays(Utils.parseDate(recDate) || now, shelfDays));
+      if (!existing && record.stock > 0) {
+        record.batches = [{
+          id: `${record.id}-B01`,
+          dateReceived: recDate,
+          expirationDate: expDate,
+          qty: record.stock,
+          initialQty: record.stock,
+          note: 'Initial ingredient batch'
+        }];
+      } else {
+        Utils.ensureProductBatches(record, now);
+      }
+    }
 
     await DB.run(['products', 'movements'], 'readwrite', async tx => {
       const ps = tx.objectStore('products'), ms = tx.objectStore('movements');
       const current = await DB.req(ps.get(record.id));
-      if (!existing && current) throw new Error('This Product ID already exists.');
+      if (!existing && current) throw new Error('This ID already exists.');
       const prev = current ? current.stock : 0;
-
-      // Preserve latest stock & batches if the user did not edit the stock field
-      if (existing && current && record.stock === existing.stock) {
-        record.stock = current.stock;
-        record.batches = Array.isArray(current.batches) ? current.batches.map(b => ({ ...b })) : [];
-        if (d.expirationDate && record.batches.length) {
-          record.batches = Utils.sortBatchesFEFO(record.batches);
-          record.batches[0].expirationDate = expDate;
-          record.batches = Utils.sortBatchesFEFO(record.batches);
-        }
-      } else if (existing && current) {
-        record.batches = Array.isArray(current.batches) ? current.batches.map(b => ({ ...b })) : [];
-      }
-
-      let batchId = '';
-      if (!existing) {
-        if (record.stock > 0) {
-          batchId = `${record.id}-B01`;
-          record.batches = [{
-            id: batchId,
-            dateReceived: recDate,
-            expirationDate: expDate,
-            qty: record.stock,
-            initialQty: record.stock,
-            note: 'Initial stock on product creation'
-          }];
-        } else {
-          record.batches = [];
-        }
-      } else if (prev !== record.stock) {
-        Utils.ensureProductBatches({ ...record, stock: prev }, now);
-        if (record.stock > prev) {
-          const added = record.stock - prev;
-          batchId = Utils.nextId(`${record.id}-B`, (record.batches || []).map(b => b.id), 2);
-          record.batches = Utils.sortBatchesFEFO([...(record.batches || []), {
-            id: batchId,
-            dateReceived: recDate,
-            expirationDate: expDate,
-            qty: added,
-            initialQty: added,
-            note: 'Stock added via product form'
-          }]);
-        } else {
-          const removed = prev - record.stock;
-          const tmp = { ...record, stock: prev, batches: record.batches };
-          Utils.deductBatchesFEFO(tmp, removed, { allowExpired: true, refDate: now });
-          record.batches = tmp.batches;
-        }
-      } else {
-        Utils.ensureProductBatches(record, now);
-      }
 
       if (!existing || prev !== record.stock) {
         const id = await DB.nextIdIn(ms, 'MOV-', 6);
         await DB.req(ms.add(Inventory.buildMovement({
           id, product: record, type: existing ? 'Adjustment' : 'Initial Stock',
           quantity: Math.abs(record.stock - prev), previousStock: prev, newStock: record.stock,
-          reason: existing ? 'Stock edited via product form' : 'Initial stock on product creation',
-          date: nowIso, batchId, dateReceived: recDate, expirationDate: expDate
+          reason: existing ? 'Stock edited via form' : 'Initial stock on creation',
+          date: nowIso
         })));
       }
       await DB.req(ps.put(record));
@@ -563,14 +477,12 @@ const Products = {
     const sold = Stats.productSales(txns).find(r => r.productId === p.id) || { qty: 0, revenue: 0 };
     const recent = movements.filter(mv => mv.productId === p.id).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
     const sups = suppliers.filter(s => (s.productIds || []).includes(p.id));
-    const shelf = Utils.productShelfSummary(p);
     const m = Utils.modal({
       title: `<i class="bi bi-box-seam me-2"></i>Product Details`, size: 'lg',
       body: `<div class="row g-4">
-        <div class="col-md-4"><div class="img-preview">${p.image ? `<img src="${p.image}" alt="">` : `<i class="bi bi-${this.placeholderIcon(p)}"></i>`}</div></div>
+        <div class="col-md-4"><div class="img-preview"><img src="${Utils.esc(Utils.productImageSrc(p))}" alt="${Utils.esc(p.name)}" onerror="this.onerror=null;this.src='${Utils.FALLBACK_FOOD_IMAGE}'"></div></div>
         <div class="col-md-8">
           <div class="d-flex flex-wrap align-items-center gap-2 mb-1"><h4 class="mb-0">${Utils.esc(p.name)}</h4>${Utils.stockBadge(p)}
-            ${p.stock > 0 ? Utils.shelfBadge(shelf.status) : ''}
             <span class="badge badge-soft-${p.status === 'active' ? 'success' : 'secondary'} text-capitalize">${p.status}</span></div>
           <div class="text-muted mb-3">${Utils.esc(p.description || 'No description.')}</div>
           <div class="detail-grid">
@@ -578,7 +490,7 @@ const Products = {
             <div><div class="detail-label">Category</div><div class="detail-value">${Utils.esc(this.catName(p.categoryId))}</div></div>
             <div><div class="detail-label">Selling Price</div><div class="detail-value">${Utils.money(p.price)}</div></div>
             <div><div class="detail-label">Cost Price</div><div class="detail-value">${Utils.money(p.cost)}</div></div>
-            <div><div class="detail-label">Total Stock</div><div class="detail-value">${Utils.num(p.stock)} ${Utils.esc(p.unit)} (${Utils.num(shelf.sellableQty)} sellable)</div></div>
+            <div><div class="detail-label">Available Servings</div><div class="detail-value">${Utils.num(p.stock)} ${Utils.esc(p.unit)}</div></div>
             <div><div class="detail-label">Reorder Level</div><div class="detail-value">${p.reorderLevel} ${Utils.esc(p.unit)}</div></div>
             <div><div class="detail-label">Total Sold</div><div class="detail-value">${Utils.num(sold.qty)} ${Utils.esc(p.unit)}</div></div>
             <div><div class="detail-label">Sales Revenue</div><div class="detail-value">${Utils.money(sold.revenue)}</div></div>
@@ -586,16 +498,7 @@ const Products = {
             <div><div class="detail-label">Last Updated</div><div class="detail-value">${Utils.fmtDateTime(p.updatedAt)}</div></div>
           </div>
         </div>
-        <div class="col-12"><h6 class="fw-semibold">Active Inventory Batches (FEFO Order)</h6>
-          <div class="table-wrap"><table class="table table-sm"><thead><tr><th>Batch ID</th><th>Date Received</th><th>Expiration Date</th><th class="text-end">Qty</th><th>Shelf-Life Status</th></tr></thead>
-          <tbody>${shelf.batches.length ? shelf.batches.map(b => `<tr>
-            <td class="mono small">${Utils.esc(b.id)}</td>
-            <td class="small">${Utils.fmtDate(b.dateReceived)}</td>
-            <td class="small">${Utils.fmtDate(b.expirationDate)}</td>
-            <td class="text-end fw-semibold">${Utils.num(b.qty)} ${Utils.esc(p.unit)}</td>
-            <td>${Utils.shelfBadge(b.status)} <span class="cell-sub ms-1">${Utils.esc(b.status.daysText)}</span></td>
-          </tr>`).join('') : Utils.emptyRow(5, 'boxes', 'No active batches')}</tbody></table></div></div>
-        <div class="col-12"><h6 class="fw-semibold">Recent Stock Movements</h6>
+        <div class="col-12"><h6 class="fw-semibold">Recent Serving &amp; Stock Movements</h6>
           <div class="table-wrap"><table class="table table-sm"><thead><tr><th>Date</th><th>Type</th><th class="text-end">Qty</th><th class="text-end">Prev → New</th><th>Reason</th></tr></thead>
           <tbody>${recent.length ? recent.map(mv => `<tr><td class="small">${Utils.fmtDateTime(mv.date)}</td><td>${Inventory.typeBadge(mv.type)}</td>
             <td class="text-end">${Inventory.signedQty(mv)}</td><td class="text-end">${mv.previousStock} → ${mv.newStock}</td><td class="small">${Utils.esc(mv.reason)}</td></tr>`).join('')
@@ -646,8 +549,9 @@ const Products = {
     const list = m.el.querySelector('#cat-list');
     const resetForm = () => { form.reset(); form.id.value = ''; m.el.querySelector('#cat-submit').innerHTML = '<i class="bi bi-plus-lg"></i> Add'; m.el.querySelector('#cat-cancel').classList.add('d-none'); Utils.clearErrors(form); };
     const draw = async () => {
-      [this.categories, this.products] = await Promise.all([DB.getAll('categories'), DB.getAll('products')]);
-      this.categories.sort((a, b) => a.name.localeCompare(b.name));
+      const [cats, allProds] = await Promise.all([DB.getAll('categories'), DB.getAll('products')]);
+      this.categories = cats.sort((a, b) => a.name.localeCompare(b.name));
+      this.products = allProds.filter(p => !p.isIngredient && !String(p.id || '').startsWith('ING-'));
       list.innerHTML = this.categories.length ? this.categories.map(c => {
         const n = this.products.filter(p => p.categoryId === c.id).length;
         return `<tr><td>${Utils.esc(c.name)}</td><td class="text-end">${n}</td><td class="text-end text-nowrap">
@@ -695,18 +599,16 @@ const Products = {
   /* ---------- CSV ---------- */
   async exportCSV(list) {
     if (!list) {
-      [this.products, this.categories] = await Promise.all([DB.getAll('products'), DB.getAll('categories')]);
-      list = this.products;
+      const [allProds, cats] = await Promise.all([DB.getAll('products'), DB.getAll('categories')]);
+      this.categories = cats;
+      list = allProds.filter(p => !p.isIngredient && !String(p.id || '').startsWith('ING-'));
     }
     Utils.exportCSV(`products-${Utils.stamp()}.csv`, [
       { label: 'Product ID', key: 'id' }, { label: 'Product Name', key: 'name' },
       { label: 'Category', value: p => this.catName(p.categoryId) }, { label: 'Description', key: 'description' },
-      { label: 'Selling Price', key: 'price' }, { label: 'Cost Price', key: 'cost' }, { label: 'Current Stock', key: 'stock' },
-      { label: 'Sellable Stock', value: p => Utils.sellableStock(p) },
+      { label: 'Selling Price', key: 'price' }, { label: 'Cost Price', key: 'cost' }, { label: 'Available Servings', key: 'stock' },
       { label: 'Reorder Level', key: 'reorderLevel' }, { label: 'Unit', key: 'unit' },
       { label: 'Availability', value: p => Utils.stockStatus(p).label },
-      { label: 'Shelf-Life Status', value: p => Utils.productShelfSummary(p).status.label },
-      { label: 'Earliest Expiration', value: p => (Utils.productShelfSummary(p).earliestBatch || {}).expirationDate || '' },
       { label: 'Status', key: 'status' },
       { label: 'Last Updated', value: p => Utils.fmtDateTime(p.updatedAt) }
     ], list);

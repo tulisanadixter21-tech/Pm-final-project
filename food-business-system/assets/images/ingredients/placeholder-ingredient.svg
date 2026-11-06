@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" width="640" height="420">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f0fdf4"/>
+      <stop offset="100%" stop-color="#dcfce7"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="420" fill="url(#bg)"/>
+  <circle cx="320" cy="180" r="74" fill="#ffffff" opacity="0.88"/>
+  <g transform="translate(276, 136)" fill="none" stroke="#16a34a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="12" y="16" width="64" height="60" rx="8" fill="#bbf7d0"/>
+    <path d="M12 36h64"/>
+    <path d="M32 16v20M56 16v20"/>
+  </g>
+  <text x="320" y="302" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="#15803d">Raw Kitchen Ingredient</text>
+  <text x="320" y="332" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="500" fill="#475569">No ingredient photo uploaded yet</text>
+</svg>

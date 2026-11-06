@@ -12,8 +12,14 @@ const Dashboard = {
   trendMode: 'daily',
 
   async render(el) {
-    const [products, txns, categories] = await Promise.all([DB.getAll('products'), DB.getAll('transactions'), DB.getAll('categories')]);
-    this.products = products;
+    if (typeof Prefs !== 'undefined' && typeof Prefs.syncProductImages === 'function') {
+      await Prefs.syncProductImages();
+    }
+    const [allProducts, txns, categories] = await Promise.all([DB.getAll('products'), DB.getAll('transactions'), DB.getAll('categories')]);
+    const menuProducts = allProducts.filter(p => !p.isIngredient && !String(p.id || '').startsWith('ING-'));
+    const ingredients = allProducts.filter(p => p.isIngredient || String(p.id || '').startsWith('ING-'));
+    this.products = menuProducts;
+    this.ingredients = ingredients;
     this.txns = Stats.completed(txns).sort((a, b) => b.date.localeCompare(a.date));
     this.allTxnsCount = txns.length;
     this.categories = categories;
@@ -21,19 +27,21 @@ const Dashboard = {
     const now = new Date();
     const today = Stats.totals(Stats.between(this.txns, Utils.startOfDay(now), Utils.endOfDay(now)));
     const yesterday = Stats.totals(Stats.between(this.txns, Utils.startOfDay(Utils.addDays(now, -1)), Utils.endOfDay(Utils.addDays(now, -1))));
-    const active = products.filter(p => p.status === 'active');
+    const active = menuProducts.filter(p => p.status === 'active');
+    const activeIngredients = ingredients.filter(p => p.status === 'active');
     const status = { in: 0, low: 0, out: 0 };
-    active.forEach(p => status[Utils.stockStatus(p).key]++);
+    activeIngredients.forEach(p => status[Utils.stockStatus(p).key]++);
     const change = yesterday.revenue > 0 ? ((today.revenue - yesterday.revenue) / yesterday.revenue) * 100 : null;
     const changeHtml = change === null
       ? (today.revenue > 0 ? 'No sales yesterday' : 'No sales yet today')
       : `<span class="${change >= 0 ? 'text-success' : 'text-danger'}"><i class="bi bi-arrow-${change >= 0 ? 'up' : 'down'}-short"></i>${Math.abs(change).toFixed(1)}%</span> vs yesterday`;
 
-    // Gather shelf-life & expiration summary across active products
+    // Gather shelf-life & expiration summary across raw ingredients in Inventory
     const expBatches = [];
     let expiredUnits = 0, verySoonUnits = 0, nearingUnits = 0, safeUnits = 0;
-    const catMap = new Map(categories.map(c => [c.id, c.name]));
-    active.forEach(p => {
+    const ingCats = (typeof Prefs !== 'undefined' && Array.isArray(Prefs.INGREDIENT_CATEGORIES)) ? Prefs.INGREDIENT_CATEGORIES : [];
+    const catMap = new Map([...categories, ...ingCats].map(c => [c.id, c.name]));
+    activeIngredients.forEach(p => {
       const sum = Utils.productShelfSummary(p, now);
       expiredUnits += sum.expiredQty;
       verySoonUnits += sum.expiringVerySoonQty;
@@ -44,7 +52,7 @@ const Dashboard = {
           expBatches.push({
             productId: p.id,
             productName: p.name,
-            category: catMap.get(p.categoryId) || 'Uncategorized',
+            category: p.categoryName || catMap.get(p.categoryId) || 'Kitchen Supply',
             unit: p.unit,
             batchId: b.id,
             dateReceived: b.dateReceived,
@@ -71,12 +79,12 @@ const Dashboard = {
       <div class="alert ${expiredUnits > 0 ? 'alert-soft-danger' : 'alert-soft-orange'} d-flex flex-wrap align-items-center gap-2 mb-3">
         <i class="bi bi-${expiredUnits > 0 ? 'calendar-x' : 'hourglass-bottom'} fs-5"></i>
         <div class="flex-grow-1 small">
-          <strong>Perishable Expiration Alert:</strong>
-          ${expiredUnits > 0 ? `<span class="fw-semibold">${Utils.num(expiredUnits)} unit(s) expired</span> (blocked from POS sales)` : ''}
+          <strong>Ingredient Expiration Alert:</strong>
+          ${expiredUnits > 0 ? `<span class="fw-semibold">${Utils.num(expiredUnits)} ingredient unit(s) expired</span>` : ''}
           ${expiredUnits > 0 && verySoonUnits > 0 ? ' · ' : ''}
           ${verySoonUnits > 0 ? `<span class="fw-semibold">${Utils.num(verySoonUnits)} unit(s) expiring within ${th.verySoon} day(s)</span>` : ''}
           ${nearingUnits > 0 ? ` · <span>${Utils.num(nearingUnits)} unit(s) nearing expiration (≤${th.near}d)</span>` : ''}.
-          FEFO (First Expired, First Out) is active for all sales.
+          FEFO (First Expired, First Out) is active for kitchen inventory batches.
         </div>
         <a href="#/inventory" class="btn btn-sm ${expiredUnits > 0 ? 'btn-danger' : 'btn-outline-dark'}" id="dash-open-expiring">
           <i class="bi bi-hourglass-split me-1"></i>Review Batches
@@ -86,8 +94,8 @@ const Dashboard = {
       <div class="row g-3 mb-3">
         <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'cash-coin', tone: 'green', label: "Today's Sales", value: Utils.money(today.revenue), sub: changeHtml })}</div>
         <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'receipt', tone: 'blue', label: 'Total Transactions', value: Utils.num(this.txns.length), sub: `${today.count} today · Avg ${Utils.money(today.avgOrder)}` })}</div>
-        <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'box-seam', tone: 'purple', label: 'Total Products', value: Utils.num(products.length), sub: `${active.length} active` })}</div>
-        <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'check2-circle', tone: 'teal', label: 'Available Products', value: Utils.num(status.in + status.low), sub: 'Active & in stock' })}</div>
+        <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'box-seam', tone: 'purple', label: 'Menu Products', value: Utils.num(menuProducts.length), sub: `${active.length} active on POS` })}</div>
+        <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'check2-circle', tone: 'teal', label: 'Raw Ingredients', value: Utils.num(activeIngredients.length), sub: `${status.in} in stock` })}</div>
         <div class="col-6 col-md-4 col-xl-2"><a href="#/inventory" class="text-decoration-none text-reset">${Utils.statCard({ icon: 'exclamation-triangle', tone: 'amber', label: 'Low Stock', value: Utils.num(status.low), sub: 'At or below reorder level' })}</a></div>
         <div class="col-6 col-md-4 col-xl-2"><a href="#/inventory" class="text-decoration-none text-reset">${Utils.statCard({ icon: 'x-octagon', tone: 'red', label: 'Out of Stock', value: Utils.num(status.out), sub: 'Needs restocking' })}</a></div>
       </div>
@@ -182,7 +190,7 @@ const Dashboard = {
             </div>
             <div class="table-wrap">
               <table class="table table-sm table-hover">
-                <thead><tr><th>Product &amp; Batch</th><th>Expiration</th><th class="text-end">Qty</th><th>Shelf-Life Status</th></tr></thead>
+                <thead><tr><th>Ingredient &amp; Batch</th><th>Expiration</th><th class="text-end">Qty</th><th>Shelf-Life Status</th></tr></thead>
                 <tbody>${this.expirationRows(expBatches)}</tbody>
               </table>
             </div>
@@ -196,7 +204,7 @@ const Dashboard = {
             </div>
             <div class="table-wrap">
               <table class="table table-sm table-hover">
-                <thead><tr><th>Product</th><th class="text-end">In Stock</th><th class="text-end">Sold in Period</th><th class="text-end">Tied Capital</th><th>Shelf Status</th></tr></thead>
+                <thead><tr><th>Product</th><th class="text-end">In Stock</th><th class="text-end">Sold in Period</th><th class="text-end">Tied Capital</th><th>Stock Status</th></tr></thead>
                 <tbody id="slow-table"></tbody>
               </table>
             </div>
@@ -209,9 +217,9 @@ const Dashboard = {
             ${Auth.can('sales') ? '<a href="#/sales" class="btn btn-sm btn-soft">Open POS</a>' : ''}</div>
           <div class="table-wrap"><table class="table table-sm table-hover"><thead><tr><th>Transaction</th><th>Date & Time</th><th>Customer</th><th class="text-end">Total</th></tr></thead>
           <tbody>${this.recentRows()}</tbody></table></div></div></div>
-        <div class="col-xl-5"><div class="card h-100"><div class="card-header d-flex justify-content-between align-items-center">Low Stock Products
+        <div class="col-xl-5"><div class="card h-100"><div class="card-header d-flex justify-content-between align-items-center">Low Stock Ingredients
             ${Auth.can('inventory') ? '<a href="#/inventory" class="btn btn-sm btn-soft">Manage</a>' : ''}</div>
-          <div class="table-wrap"><table class="table table-sm"><thead><tr><th>Product</th><th class="text-end">Stock</th><th class="text-end">Reorder</th><th>Status</th></tr></thead>
+          <div class="table-wrap"><table class="table table-sm"><thead><tr><th>Ingredient</th><th class="text-end">Stock</th><th class="text-end">Reorder</th><th>Status</th></tr></thead>
           <tbody>${this.lowRows()}</tbody></table></div></div></div>
       </div>`;
 
@@ -291,9 +299,10 @@ const Dashboard = {
   },
 
   lowRows() {
-    const list = this.products.filter(p => p.status === 'active' && Utils.stockStatus(p).key !== 'in')
+    const source = (this.ingredients && this.ingredients.length) ? this.ingredients : this.products;
+    const list = source.filter(p => p.status === 'active' && Utils.stockStatus(p).key !== 'in')
       .sort((a, b) => a.stock - b.stock).slice(0, 8);
-    if (!list.length) return Utils.emptyRow(4, 'check2-circle', 'Stock levels look good', 'No products are at or below their reorder level.');
+    if (!list.length) return Utils.emptyRow(4, 'check2-circle', 'Stock levels look good', 'No ingredients are at or below their reorder level.');
     return list.map(p => `<tr><td><div class="cell-title small">${Utils.esc(p.name)}</div><div class="cell-sub">${Utils.esc(p.id)}</div></td>
       <td class="text-end">${Utils.num(p.stock)} <span class="cell-sub">${Utils.esc(p.unit)}</span></td><td class="text-end">${p.reorderLevel}</td><td>${Utils.stockBadge(p)}</td></tr>`).join('');
   },
@@ -351,29 +360,37 @@ const Dashboard = {
     const summaryEl = document.getElementById('dash-trend-summary');
     if (summaryEl) {
       summaryEl.innerHTML = `
-        <div class="row g-2 align-items-center small">
+        <div class="row g-2 align-items-stretch small">
           <div class="col-6 col-md-3">
-            <div class="text-muted">Period Revenue</div>
-            <div class="fw-bold fs-6 text-primary">${Utils.money(totals.revenue)}</div>
-            <div>${this.fmtDelta(cmp.deltas.revenue)}</div>
+            <div class="trend-kpi-tile">
+              <div class="prod-metric-label">Period Revenue</div>
+              <div class="fw-bold fs-5 text-primary">${Utils.money(totals.revenue)}</div>
+              <div class="mt-1">${this.fmtDelta(cmp.deltas.revenue)}</div>
+            </div>
           </div>
           <div class="col-6 col-md-3">
-            <div class="text-muted">Transactions</div>
-            <div class="fw-bold fs-6">${Utils.num(totals.count)}</div>
-            <div>${this.fmtDelta(cmp.deltas.count)}</div>
+            <div class="trend-kpi-tile">
+              <div class="prod-metric-label">Transactions</div>
+              <div class="fw-bold fs-5">${Utils.num(totals.count)}</div>
+              <div class="mt-1">${this.fmtDelta(cmp.deltas.count)}</div>
+            </div>
           </div>
           <div class="col-6 col-md-3">
-            <div class="text-muted">Avg. Transaction Value</div>
-            <div class="fw-bold fs-6">${Utils.money(totals.avgOrder)}</div>
-            <div>${this.fmtDelta(cmp.deltas.avgOrder)}</div>
+            <div class="trend-kpi-tile">
+              <div class="prod-metric-label">Avg. Transaction Value</div>
+              <div class="fw-bold fs-5">${Utils.money(totals.avgOrder)}</div>
+              <div class="mt-1">${this.fmtDelta(cmp.deltas.avgOrder)}</div>
+            </div>
           </div>
           <div class="col-6 col-md-3">
-            <div class="text-muted">Products Sold</div>
-            <div class="fw-bold fs-6">${Utils.num(totals.items)} units</div>
-            <div>${this.fmtDelta(cmp.deltas.items)}</div>
+            <div class="trend-kpi-tile">
+              <div class="prod-metric-label">Products Sold</div>
+              <div class="fw-bold fs-5">${Utils.num(totals.items)} <span class="fw-normal small text-muted">units</span></div>
+              <div class="mt-1">${this.fmtDelta(cmp.deltas.items)}</div>
+            </div>
           </div>
         </div>
-        ${!cmp.sufficientForComparison ? `<div class="small text-muted mt-1"><i class="bi bi-info-circle me-1"></i>Insufficient sales history in either the selected or preceding period (${Utils.fmtDate(cmp.prevFrom)} – ${Utils.fmtDate(cmp.prevTo)}) for a full period-over-period comparison.</div>` : ''}`;
+        ${!cmp.sufficientForComparison ? `<div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Insufficient sales history in either the selected or preceding period (${Utils.fmtDate(cmp.prevFrom)} – ${Utils.fmtDate(cmp.prevTo)}) for a full period-over-period comparison.</div>` : ''}`;
     }
 
     // Peak Sales Day & Hour insights
@@ -384,8 +401,8 @@ const Dashboard = {
         peakEl.innerHTML = `<span class="text-muted"><i class="bi bi-info-circle me-1"></i><strong>Peak Sales Insights:</strong> Insufficient sales history in this range (${peaks.validTimestamps} transaction${peaks.validTimestamps === 1 ? '' : 's'} across ${peaks.distinctDays} day${peaks.distinctDays === 1 ? '' : 's'}). At least 3 completed transactions across 2+ days are required to identify reliable peak days and hours.</span>`;
       } else {
         peakEl.innerHTML = `
-          <span><i class="bi bi-calendar-event text-success me-1"></i><strong>Peak Sales Day:</strong> ${Utils.esc(peaks.peakDay.label)} (${Utils.money(peaks.peakDay.revenue)} · ${peaks.peakDay.count} txns)</span>
-          <span><i class="bi bi-clock-history text-primary me-1"></i><strong>Peak Sales Hour:</strong> ${Utils.esc(peaks.peakHour.label)} (${Utils.money(peaks.peakHour.revenue)} · ${peaks.peakHour.count} txns)</span>`;
+          <span class="badge badge-soft-success"><i class="bi bi-calendar-event me-1"></i>Peak Sales Day: ${Utils.esc(peaks.peakDay.label)} (${Utils.money(peaks.peakDay.revenue)} · ${peaks.peakDay.count} txns)</span>
+          <span class="badge badge-soft-info"><i class="bi bi-clock-history me-1"></i>Peak Sales Hour: ${Utils.esc(peaks.peakHour.label)} (${Utils.money(peaks.peakHour.revenue)} · ${peaks.peakHour.count} txns)</span>`;
       }
     }
 
@@ -465,13 +482,12 @@ const Dashboard = {
       slowBody.innerHTML = slow.length
         ? slow.map(s => {
             const prod = this.products.find(p => p.id === s.productId);
-            const shelf = prod ? Utils.productShelfSummary(prod) : null;
             return `<tr>
               <td><div class="cell-title small">${Utils.esc(s.name)}</div><div class="cell-sub">${Utils.esc(s.category)}</div></td>
               <td class="text-end">${Utils.num(s.stock)} <span class="cell-sub">${Utils.esc(s.unit)}</span></td>
               <td class="text-end">${s.qty === 0 ? '<span class="badge badge-soft-secondary">0 sold</span>' : `${Utils.num(s.qty)} (${s.txns} txn)`}</td>
               <td class="text-end small">${Utils.money(s.stockValueCost)}</td>
-              <td>${shelf ? Utils.shelfBadge(shelf.overallStatus) : '—'}</td>
+              <td>${prod ? Utils.stockBadge(prod) : '—'}</td>
             </tr>`;
           }).join('')
         : Utils.emptyRow(5, 'box', 'No active products to evaluate');
