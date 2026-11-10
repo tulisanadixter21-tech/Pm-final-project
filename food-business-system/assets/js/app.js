@@ -11,7 +11,7 @@ const App = {
   modules() {
     return {
       dashboard: Dashboard, products: Products, inventory: Inventory, sales: Sales,
-      customers: Customers, suppliers: Suppliers, reports: Reports, users: Users, settings: SettingsPage
+      suppliers: Suppliers, reports: Reports, users: Users, settings: SettingsPage
     };
   },
 

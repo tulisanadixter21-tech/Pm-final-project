@@ -180,7 +180,7 @@ const Dashboard = {
           <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
               <span><i class="bi bi-hourglass-split text-warning me-1"></i>Expiration &amp; Shelf-Life Alerts</span>
-              <div class="d-flex gap-1 align-items-center">
+              <div class="d-flex flex-wrap gap-1 align-items-center">
                 <span class="badge badge-soft-danger" title="Expired units">${Utils.num(expiredUnits)} Expired</span>
                 <span class="badge badge-soft-orange" title="Expiring very soon">${Utils.num(verySoonUnits)} Very Soon</span>
                 <span class="badge badge-soft-warning" title="Nearing expiration">${Utils.num(nearingUnits)} Nearing</span>
@@ -215,7 +215,7 @@ const Dashboard = {
       <div class="row g-3">
         <div class="col-xl-7"><div class="card h-100"><div class="card-header d-flex justify-content-between align-items-center">Recent Transactions
             ${Auth.can('sales') ? '<a href="#/sales" class="btn btn-sm btn-soft">Open POS</a>' : ''}</div>
-          <div class="table-wrap"><table class="table table-sm table-hover"><thead><tr><th>Transaction</th><th>Date & Time</th><th>Customer</th><th class="text-end">Total</th></tr></thead>
+          <div class="table-wrap"><table class="table table-sm table-hover"><thead><tr><th>Transaction</th><th>Date & Time</th><th class="text-end">Items</th><th class="text-end">Total</th></tr></thead>
           <tbody>${this.recentRows()}</tbody></table></div></div></div>
         <div class="col-xl-5"><div class="card h-100"><div class="card-header d-flex justify-content-between align-items-center">Low Stock Ingredients
             ${Auth.can('inventory') ? '<a href="#/inventory" class="btn btn-sm btn-soft">Manage</a>' : ''}</div>
@@ -295,7 +295,7 @@ const Dashboard = {
     const list = this.txns.slice(0, 8);
     if (!list.length) return Utils.emptyRow(4, 'receipt', 'No transactions yet', 'Completed sales will appear here.');
     return list.map(t => `<tr><td class="mono">${Utils.esc(t.id)}</td><td class="small">${Utils.fmtDateTime(t.date)}</td>
-      <td class="small">${Utils.esc(t.customerName)}</td><td class="text-end fw-semibold">${Utils.money(t.total)}</td></tr>`).join('');
+      <td class="text-end small">${Utils.num(t.itemCount)}</td><td class="text-end fw-semibold">${Utils.money(t.total)}</td></tr>`).join('');
   },
 
   lowRows() {

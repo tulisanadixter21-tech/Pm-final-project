@@ -24,8 +24,7 @@ const SampleData = {
       expiryCriticalDays: 1,
       receiptHeader: 'Thank you for dining with us!',
       receiptFooter: 'This is not an official receipt. Please come again!',
-      receiptShowCashier: true,
-      receiptShowCustomer: true
+      receiptShowCashier: true
     };
   },
 
@@ -156,7 +155,7 @@ const SampleData = {
       { id: 'CAT-03', name: 'Beverages', description: 'Cold and hot drinks' },
       { id: 'CAT-04', name: 'Pizza & Pasta', description: 'Pizza slices and pasta dishes' },
       { id: 'CAT-05', name: 'Desserts', description: 'Cakes and sweets' },
-      { id: 'CAT-06', name: 'Chicken & Rice Meals', description: 'Fried chicken and rice meals' },
+      { id: 'CAT-06', name: 'Meals', description: 'Fried chicken and rice meals' },
       { id: 'CAT-07', name: 'Breakfast', description: 'All-day breakfast items' }
     ];
     const catName = id => (categories.find(c => c.id === id) || {}).name || '';
@@ -210,10 +209,10 @@ const SampleData = {
     }));
     const supplierOf = pid => suppliers.find(s => s.status === 'active' && s.productIds.includes(pid));
 
-    const ALL = ['dashboard', 'products', 'inventory', 'sales', 'customers', 'suppliers', 'reports', 'users', 'settings'];
+    const ALL = ['dashboard', 'products', 'inventory', 'sales', 'suppliers', 'reports', 'users', 'settings'];
     const users = [
       { id: 'U001', fullName: 'Administrator', username: 'admin', password: 'admin123', role: 'admin', phone: '0917 555 0100', status: 'active', permissions: ALL },
-      { id: 'U002', fullName: 'Carla Mae Ramos', username: 'cashier', password: 'staff123', role: 'staff', phone: '0917 555 0101', status: 'active', permissions: ['dashboard', 'sales', 'customers'] },
+      { id: 'U002', fullName: 'Carla Mae Ramos', username: 'cashier', password: 'staff123', role: 'staff', phone: '0917 555 0101', status: 'active', permissions: ['dashboard', 'sales'] },
       { id: 'U003', fullName: 'Jerome Navarro', username: 'inventory', password: 'staff123', role: 'staff', permissions: ['dashboard', 'products', 'inventory', 'suppliers', 'reports'], phone: '0917 555 0102' },
       { id: 'U004', fullName: 'Bea Lim', username: 'bea', password: 'staff123', role: 'staff', phone: '0917 555 0103', status: 'inactive', permissions: ['dashboard', 'sales'] }
     ].map(u => ({ ...u, createdAt: at(-120, 8, 0).toISOString() }));

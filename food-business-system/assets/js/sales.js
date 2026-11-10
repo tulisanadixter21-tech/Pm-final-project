@@ -100,18 +100,6 @@ const Sales = {
               <button class="btn btn-sm btn-link text-danger text-decoration-none p-0" id="cart-clear">Clear</button>
             </div>
             <div class="card-body">
-              <!-- Customer selector -->
-              <div class="mb-2">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                  <label class="form-label mb-0 small">Customer</label>
-                  ${Auth.can('customers') ? '<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="pos-new-cust"><i class="bi bi-person-plus me-1"></i>New customer</button>' : ''}
-                </div>
-                <select class="form-select form-select-sm" id="pos-customer">
-                  <option value="">Guest Customer (Walk-in)</option>
-                  ${this.customers.map(c => `<option value="${c.id}" ${c.id === p.customerId ? 'selected' : ''}>${Utils.esc(c.name)} (${Utils.esc(c.phone || c.id)})</option>`).join('')}
-                </select>
-              </div>
-
               <!-- Cart lines -->
               <div class="cart-items my-2" id="cart-items"></div>
 
@@ -186,13 +174,6 @@ const Sales = {
     });
 
     // Cart events
-    box.querySelector('#pos-customer').addEventListener('change', e => { p.customerId = e.target.value; });
-    const newCustBtn = box.querySelector('#pos-new-cust');
-    if (newCustBtn) newCustBtn.addEventListener('click', () => Customers.openForm(null, async created => {
-      this.customers = (await DB.getAll('customers')).sort((a, b) => a.name.localeCompare(b.name));
-      p.customerId = created.id;
-      this.renderPOS();
-    }));
     box.querySelector('#cart-clear').addEventListener('click', () => {
       if (!p.cart.length) return;
       p.cart = []; p.discountType = 'none'; p.discountValue = ''; p.cash = '';
@@ -411,11 +392,10 @@ const Sales = {
       return;
     }
 
-    const cust = this.customers.find(c => c.id === p.customerId);
     const ok = await Utils.confirm({
       title: 'Confirm Sale',
       confirmText: 'Confirm & Save Sale',
-      message: `<div class="mb-2">Complete this transaction for <strong>${Utils.esc(cust ? cust.name : 'Guest Customer')}</strong>?</div>
+      message: `<div class="mb-2">Complete this transaction?</div>
         <div class="p-2 rounded-3" style="background:var(--brand-lighter)">
           <div class="d-flex justify-content-between"><span>Items (${p.cart.reduce((s, i) => s + i.qty, 0)})</span><span>${Utils.money(t.subtotal)}</span></div>
           ${t.discount > 0 ? `<div class="d-flex justify-content-between text-danger"><span>Discount</span><span>-${Utils.money(t.discount)}</span></div>` : ''}
@@ -473,8 +453,8 @@ const Sales = {
           discountValue: p.discountType === 'none' ? 0 : Number(p.discountValue) || 0,
           discount: t.discount,
           total: t.total, cash: t.cash, change: t.change,
-          customerId: cust ? cust.id : null,
-          customerName: cust ? cust.name : 'Guest',
+          customerId: null,
+          customerName: 'Walk-in',
           cashierId: Auth.user.id,
           cashierName: Auth.user.fullName,
           status: 'completed'
@@ -511,7 +491,6 @@ const Sales = {
       <div class="line"></div>
       <div><strong>Receipt:</strong> ${Utils.esc(t.id)}</div>
       <div><strong>Date:</strong> ${Utils.fmtDateTime(t.date)}</div>
-      ${s.receiptShowCustomer !== false ? `<div><strong>Customer:</strong> ${Utils.esc(t.customerName || 'Guest')}</div>` : ''}
       ${s.receiptShowCashier !== false ? `<div><strong>Cashier:</strong> ${Utils.esc(t.cashierName || '')}</div>` : ''}
       <div class="line"></div>
       <table>
@@ -558,9 +537,7 @@ const Sales = {
     box.innerHTML = `<div class="card">
       <div class="card-body border-bottom"><div class="toolbar">
         <div class="search-box"><i class="bi bi-search"></i>
-          <input type="search" class="form-control" id="tx-search" placeholder="Search transaction ID, customer or product…" value="${Utils.esc(s.search)}"></div>
-        <select class="form-select" id="tx-cust"><option value="">All customers</option><option value="__guest__">Guest only</option>
-          ${this.customers.map(c => `<option value="${c.id}">${Utils.esc(c.name)}</option>`).join('')}</select>
+          <input type="search" class="form-control" id="tx-search" placeholder="Search transaction ID, product or cashier…" value="${Utils.esc(s.search)}"></div>
         <input type="date" class="form-control" id="tx-from" value="${s.from}" title="From date">
         <input type="date" class="form-control" id="tx-to" value="${s.to}" title="To date">
         <div class="ms-auto d-flex gap-2">
@@ -570,12 +547,10 @@ const Sales = {
       </div></div>
       <div class="px-3 py-2 bg-light border-bottom small d-flex flex-wrap gap-3" id="tx-summary"></div>
       <div class="table-wrap"><table class="table table-hover"><thead><tr>
-        <th>Transaction ID</th><th>Date & Time</th><th>Customer</th><th>Products</th>
+        <th>Transaction ID</th><th>Date & Time</th><th>Products</th>
         <th class="text-end">Subtotal</th><th class="text-end">Discount</th><th class="text-end">Total</th><th>Status</th><th>Cashier</th><th class="text-end">Actions</th>
       </tr></thead><tbody id="tx-tbody"></tbody></table></div><div id="tx-pager"></div></div>`;
-    box.querySelector('#tx-cust').value = s.customerId;
     box.querySelector('#tx-search').addEventListener('input', Utils.debounce(e => { s.search = e.target.value.trim(); s.page = 1; this.drawHistory(); }));
-    box.querySelector('#tx-cust').addEventListener('change', e => { s.customerId = e.target.value; s.page = 1; this.drawHistory(); });
     box.querySelector('#tx-from').addEventListener('change', e => { s.from = e.target.value; s.page = 1; this.drawHistory(); });
     box.querySelector('#tx-to').addEventListener('change', e => { s.to = e.target.value; s.page = 1; this.drawHistory(); });
     box.querySelector('#tx-clear').addEventListener('click', () => { this.hstate = { search: '', from: '', to: '', customerId: '', page: 1 }; this.renderHistory(); });
@@ -599,11 +574,9 @@ const Sales = {
   filteredHistory() {
     const s = this.hstate, q = s.search.toLowerCase();
     return this.txns.filter(t => {
-      if (s.customerId === '__guest__' && t.customerId) return false;
-      if (s.customerId && s.customerId !== '__guest__' && t.customerId !== s.customerId) return false;
       if (!Utils.inDateRange(t.date, s.from, s.to)) return false;
       if (!q) return true;
-      const hay = [t.id, t.customerName, t.cashierName, t.status || 'completed', ...t.items.map(i => i.name)].join(' ').toLowerCase();
+      const hay = [t.id, t.cashierName, t.status || 'completed', ...t.items.map(i => i.name)].join(' ').toLowerCase();
       return hay.includes(q);
     });
   },
@@ -626,7 +599,6 @@ const Sales = {
       return `<tr class="${isVoid ? 'opacity-75' : ''}">
       <td class="mono">${Utils.esc(t.id)}</td>
       <td class="small text-nowrap">${Utils.fmtDateTime(t.date)}</td>
-      <td>${Utils.esc(t.customerName || 'Guest')}</td>
       <td class="small"><div class="text-nowrap-ellipsis" title="${Utils.esc(t.items.map(i => `${i.name} ×${i.qty}`).join(', '))}">
         ${Utils.esc(t.items.map(i => `${i.name} ×${i.qty}`).join(', '))}</div></td>
       <td class="text-end">${Utils.money(t.subtotal)}</td>
@@ -640,7 +612,7 @@ const Sales = {
         ${!isVoid ? `<button class="btn btn-light btn-action text-danger" data-void="${t.id}" title="Void Transaction & Restore Stock"><i class="bi bi-x-circle"></i></button>` : ''}
       </td></tr>`;
     }).join('')
-      : Utils.emptyRow(10, 'receipt', 'No transactions found', 'Completed sales matching your filters will appear here.');
+      : Utils.emptyRow(9, 'receipt', 'No transactions found', 'Completed sales matching your filters will appear here.');
     document.getElementById('tx-pager').innerHTML = Utils.pagerHTML(pg);
   },
 
@@ -691,7 +663,6 @@ const Sales = {
     Utils.exportCSV(`sales-${Utils.stamp()}.csv`, [
       { label: 'Transaction ID', key: 'id' },
       { label: 'Date and Time', value: t => Utils.fmtDateTime(t.date) },
-      { label: 'Customer', key: 'customerName' },
       { label: 'Items Count', key: 'itemCount' },
       { label: 'Products Purchased', value: t => t.items.map(i => `${i.name} (${i.qty} x ${i.price})`).join('; ') },
       { label: 'Subtotal', key: 'subtotal' },

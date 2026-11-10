@@ -332,13 +332,43 @@ const Prefs = (() => {
       console.warn('LocalStorage migration skipped:', e);
     }
 
-    // 2. Migrate & sync IndexedDB products and movements stores safely
+    // 2. Migrate & sync IndexedDB products, categories, transactions, and movements stores safely
     if (typeof DB !== 'undefined' && DB && typeof DB.run === 'function') {
       try {
-        await DB.run(['products', 'movements', 'suppliers'], 'readwrite', async tx => {
+        await DB.run(['products', 'categories', 'transactions', 'movements', 'suppliers'], 'readwrite', async tx => {
           const ps = tx.objectStore('products');
+          const cs = tx.objectStore('categories');
+          const ts = tx.objectStore('transactions');
           const ms = tx.objectStore('movements');
           const ss = tx.objectStore('suppliers');
+
+          // Rename "Chicken & Rice Meals" / "Chicken & Rice Meal" -> "Meals" in categories and transaction items
+          const allCats = await DB.req(cs.getAll());
+          for (const cat of allCats) {
+            if (cat.id === 'CAT-06' || /^chicken\s*&\s*rice\s*meals?$/i.test(String(cat.name || '').trim())) {
+              if (cat.name !== 'Meals') {
+                cat.name = 'Meals';
+                await DB.req(cs.put(cat));
+                updatedCount++;
+              }
+            }
+          }
+          const allTxns = await DB.req(ts.getAll());
+          for (const txn of allTxns) {
+            if (Array.isArray(txn.items)) {
+              let tChanged = false;
+              txn.items.forEach(item => {
+                if (item && /^chicken\s*&\s*rice\s*meals?$/i.test(String(item.category || '').trim())) {
+                  item.category = 'Meals';
+                  tChanged = true;
+                }
+              });
+              if (tChanged) {
+                await DB.req(ts.put(txn));
+              }
+            }
+          }
+
           const all = await DB.req(ps.getAll());
           const byId = new Map(all.map(p => [p.id, p]));
 

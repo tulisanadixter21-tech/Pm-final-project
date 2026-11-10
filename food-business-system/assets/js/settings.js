@@ -16,10 +16,10 @@ const SettingsPage = {
     const lastBackup = p.lastBackup ? Utils.fmtDateTime(p.lastBackup) : 'Never backed up';
 
     el.innerHTML = `
-      <div class="alert alert-soft-info d-flex gap-2 align-items-center mb-3">
+      <div class="alert alert-soft-info d-flex flex-wrap gap-2 align-items-center mb-3">
         <i class="bi bi-hdd-stack fs-5"></i>
         <div class="flex-grow-1 small"><strong>Local Browser Storage:</strong> This application runs entirely in your browser with no cloud server. Please export a JSON backup regularly and keep it in a safe folder or USB drive.</div>
-        <span class="badge badge-soft-info">Last backup: ${Utils.esc(lastBackup)}</span>
+        <span class="badge badge-soft-info text-wrap text-start">Last backup: ${Utils.esc(lastBackup)}</span>
       </div>
 
       <div class="row g-3">
@@ -67,10 +67,7 @@ const SettingsPage = {
                 <input class="form-control" name="receiptHeader" value="${Utils.esc(s.receiptHeader || '')}" maxlength="120"></div>
               <div class="col-12"><label class="form-label">Receipt Footer Message</label>
                 <input class="form-control" name="receiptFooter" value="${Utils.esc(s.receiptFooter || '')}" maxlength="120"></div>
-              <div class="col-sm-6">
-                <label class="form-check"><input type="checkbox" class="form-check-input" name="receiptShowCustomer" ${s.receiptShowCustomer !== false ? 'checked' : ''}>
-                  <span class="form-check-label">Show customer name on receipt</span></label></div>
-              <div class="col-sm-6">
+              <div class="col-12">
                 <label class="form-check"><input type="checkbox" class="form-check-input" name="receiptShowCashier" ${s.receiptShowCashier !== false ? 'checked' : ''}>
                   <span class="form-check-label">Show cashier name on receipt</span></label></div>
 
@@ -127,7 +124,6 @@ const SettingsPage = {
                 <button class="btn btn-light btn-sm" data-csv="batches"><i class="bi bi-hourglass-split me-1"></i>Batches &amp; Expiry</button>
                 <button class="btn btn-light btn-sm" data-csv="movements"><i class="bi bi-clock-history me-1"></i>Movements</button>
                 <button class="btn btn-light btn-sm" data-csv="sales"><i class="bi bi-receipt me-1"></i>Sales</button>
-                <button class="btn btn-light btn-sm" data-csv="customers"><i class="bi bi-people me-1"></i>Customers</button>
                 <button class="btn btn-light btn-sm" data-csv="suppliers"><i class="bi bi-truck me-1"></i>Suppliers</button>
                 <a class="btn btn-light btn-sm" href="#/reports"><i class="bi bi-bar-chart-line me-1"></i>Reports</a>
               </div>
@@ -171,7 +167,6 @@ const SettingsPage = {
         expiryVerySoonDays: verySoon,
         expiryCriticalDays: critical,
         receiptHeader: d.receiptHeader || '', receiptFooter: d.receiptFooter || '',
-        receiptShowCustomer: !!form.receiptShowCustomer.checked,
         receiptShowCashier: !!form.receiptShowCashier.checked
       };
       try {

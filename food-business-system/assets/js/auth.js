@@ -13,7 +13,6 @@ const Auth = {
     { key: 'products', label: 'Products', icon: 'box-seam', section: 'Operations' },
     { key: 'inventory', label: 'Inventory', icon: 'clipboard-data', section: 'Operations' },
     { key: 'sales', label: 'Sales', icon: 'cart3', section: 'Operations' },
-    { key: 'customers', label: 'Customers', icon: 'people', section: 'Records' },
     { key: 'suppliers', label: 'Suppliers', icon: 'truck', section: 'Records' },
     { key: 'reports', label: 'Reports', icon: 'bar-chart-line', section: 'Records' },
     { key: 'users', label: 'User Management', icon: 'person-badge', section: 'Administration' },

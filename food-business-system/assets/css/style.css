@@ -61,6 +61,12 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+.min-w-0 {
+  min-width: 0 !important;
+  flex: 1 1 0%;
 }
 
 /* Tabular numbers for financial, stock, and ID values */
@@ -201,6 +207,8 @@ body {
   border-radius: 10px;
   border: 1px solid var(--border);
   gap: 2px;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 .btn-group[role="group"] > .btn,
 .prod-view-toggle > .btn {
@@ -535,13 +543,15 @@ body {
 .content {
   padding: 1.4rem 1.6rem 2.75rem;
   max-width: 1600px;
+  min-width: 0;
 }
 .page-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   margin-bottom: 1.25rem;
-  gap: 1rem;
+  gap: .75rem 1rem;
 }
 .page-title {
   font-size: 1.45rem;
@@ -697,6 +707,7 @@ body {
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   background: var(--surface);
+  min-width: 0;
 }
 /* Hide empty pager wrapper cards automatically */
 .card:has(> #prod-pager:empty),
@@ -716,6 +727,7 @@ body {
 }
 .card-body {
   padding: 1.15rem;
+  min-width: 0;
 }
 .card-footer {
   background: var(--surface-subtle);
@@ -812,8 +824,23 @@ a:hover > .stat-card {
 .alert-soft-info    { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
 .alert-soft-success { background: var(--brand-lighter); border: 1px solid var(--brand-border); color: #14532d; }
 
-.chart-box { position: relative; height: 280px; }
+.chart-box {
+  position: relative;
+  height: 280px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
 .chart-box.sm { height: 230px; }
+.chart-box canvas {
+  max-width: 100% !important;
+}
+#dash-peak-insights .badge {
+  white-space: normal;
+  text-align: left;
+  line-height: 1.35;
+}
 
 /* ---------- Toolbar & Tables ---------- */
 .toolbar {
@@ -1088,6 +1115,7 @@ a:hover > .stat-card {
   border-top: 1px solid #edf2ef;
   background: var(--surface-subtle);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: .4rem;
@@ -1182,10 +1210,14 @@ a:hover > .stat-card {
   border-radius: 0 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px);
 }
 
+.toast-container {
+  max-width: 100vw;
+}
 .toast {
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
   color: #fff;
+  max-width: calc(100vw - 1.5rem);
 }
 .toast-success { background: #15803d; }
 .toast-danger  { background: #b91c1c; }
@@ -1362,6 +1394,51 @@ a:hover > .stat-card {
 }
 @media (max-width: 991.98px) {
   .cart-card { position: static; }
+  .toolbar .search-box { flex: 1 1 220px; max-width: none; }
+}
+
+@media (max-width: 767.98px) {
+  .page-title { font-size: 1.25rem; }
+  .page-subtitle { font-size: .81rem; }
+  .card-header { padding: .75rem .95rem; }
+  .card-body { padding: .95rem; }
+  .stat-card { padding: .85rem .9rem; gap: .65rem; }
+  .stat-icon { width: 38px; height: 38px; font-size: 1.1rem; border-radius: 10px; }
+  .stat-value { font-size: 1.15rem; }
+  .stat-label { font-size: .69rem; overflow-wrap: anywhere; }
+  .stat-sub { font-size: .71rem; }
+  .chart-box { height: 240px; }
+  .chart-box.sm { height: 205px; }
+  .section-tabs .nav-link { padding: .42rem .8rem; font-size: .82rem; }
+  #rep-date-controls { width: 100%; }
+  #rep-date-controls .form-select,
+  #rep-date-controls .form-control { flex: 1 1 130px; min-width: 0; }
+}
+
+@media (max-width: 575.98px) {
+  .content { padding: .85rem .75rem 2.25rem; }
+  .topbar { padding: 0 .75rem; height: 58px; gap: .45rem; }
+  .login-screen { padding: .85rem; }
+  .login-card .card-body { padding: 1.35rem !important; }
+  .toolbar > .d-flex,
+  .toolbar > .btn-group { width: 100%; }
+  .toolbar .ms-auto { display: flex; flex-wrap: wrap; gap: .45rem; }
+  .toolbar .ms-auto > .btn { flex: 1 1 auto; }
+  .pos-grid { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: .65rem; }
+  .cart-line { flex-wrap: wrap; gap: .45rem; }
+  .pager { justify-content: center; text-align: center; padding: .65rem .75rem; }
+  .pager-info { width: 100%; }
+  .modal-dialog { margin: .5rem; }
+  .modal-header, .modal-body, .modal-footer { padding: .85rem 1rem; }
+}
+
+@media (max-width: 380px) {
+  .stat-card { padding: .7rem .75rem; gap: .5rem; }
+  .stat-icon { width: 32px; height: 32px; font-size: .95rem; border-radius: 8px; }
+  .stat-value { font-size: 1.02rem; }
+  .stat-label { font-size: .64rem; letter-spacing: .02em; }
+  .btn-group[role="group"] > .btn,
+  .prod-view-toggle > .btn { padding: .26rem .5rem; font-size: .74rem; }
 }
 
 /* ---------- Receipt ---------- */

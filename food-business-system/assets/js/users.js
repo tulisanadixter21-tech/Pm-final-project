@@ -117,7 +117,7 @@ const Users = {
     const u = user || {
       id: Utils.nextId('U', this.users.map(x => x.id), 3),
       fullName: '', username: '', password: '', role: 'staff', phone: '', status: 'active',
-      permissions: ['dashboard', 'sales', 'customers']
+      permissions: ['dashboard', 'sales']
     };
     const isAdminActor = Auth.isAdmin();
     const m = Utils.modal({

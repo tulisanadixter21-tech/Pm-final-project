@@ -429,7 +429,6 @@ const Reports = {
         columns: [
           { label: 'Transaction ID', key: 'id', mono: true },
           { label: 'Date & Time', value: t => Utils.fmtDateTime(t.date) },
-          { label: 'Customer', key: 'customerName' },
           { label: 'Products Purchased', value: t => t.items.map(i => `${i.name} ×${i.qty}`).join(', ') },
           { label: 'Qty', key: 'itemCount', align: 'end' },
           { label: 'Subtotal', value: t => Utils.money(t.subtotal), raw: t => t.subtotal, align: 'end' },
@@ -439,7 +438,7 @@ const Reports = {
           { label: 'Cashier', key: 'cashierName' }
         ],
         rows: txns,
-        searchText: t => [t.id, t.customerName, t.cashierName, ...t.items.map(i => i.name)].join(' '),
+        searchText: t => [t.id, t.cashierName, ...t.items.map(i => i.name)].join(' '),
         chart: { type: 'line', labels: byDay.map(d => d.label), datasets: [{ label: 'Daily Sales Revenue', data: byDay.map(d => d.revenue), borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,.12)', fill: true, tension: .3 }], money: true }
       };
     }
