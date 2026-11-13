@@ -212,9 +212,9 @@ const SampleData = {
     const ALL = ['dashboard', 'products', 'inventory', 'sales', 'suppliers', 'reports', 'users', 'settings'];
     const users = [
       { id: 'U001', fullName: 'Administrator', username: 'admin', password: 'admin123', role: 'admin', phone: '0917 555 0100', status: 'active', permissions: ALL },
-      { id: 'U002', fullName: 'Carla Mae Ramos', username: 'cashier', password: 'staff123', role: 'staff', phone: '0917 555 0101', status: 'active', permissions: ['dashboard', 'sales'] },
+      { id: 'U002', fullName: 'Carla Mae Ramos', username: 'cashier', password: 'staff123', role: 'staff', phone: '0917 555 0101', status: 'active', permissions: ['sales'] },
       { id: 'U003', fullName: 'Jerome Navarro', username: 'inventory', password: 'staff123', role: 'staff', permissions: ['dashboard', 'products', 'inventory', 'suppliers', 'reports'], phone: '0917 555 0102' },
-      { id: 'U004', fullName: 'Bea Lim', username: 'bea', password: 'staff123', role: 'staff', phone: '0917 555 0103', status: 'inactive', permissions: ['dashboard', 'sales'] }
+      { id: 'U004', fullName: 'Bea Lim', username: 'bea', password: 'staff123', role: 'staff', phone: '0917 555 0103', status: 'inactive', permissions: ['sales'] }
     ].map(u => ({ ...u, createdAt: at(-120, 8, 0).toISOString() }));
 
     /* ---------- Simulate inventory + sales history ---------- */

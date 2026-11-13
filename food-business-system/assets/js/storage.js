@@ -335,12 +335,24 @@ const Prefs = (() => {
     // 2. Migrate & sync IndexedDB products, categories, transactions, and movements stores safely
     if (typeof DB !== 'undefined' && DB && typeof DB.run === 'function') {
       try {
-        await DB.run(['products', 'categories', 'transactions', 'movements', 'suppliers'], 'readwrite', async tx => {
+        await DB.run(['products', 'categories', 'transactions', 'movements', 'suppliers', 'users'], 'readwrite', async tx => {
           const ps = tx.objectStore('products');
           const cs = tx.objectStore('categories');
           const ts = tx.objectStore('transactions');
           const ms = tx.objectStore('movements');
           const ss = tx.objectStore('suppliers');
+          const us = tx.objectStore('users');
+
+          // Restrict default cashier account to Sales & POS only (one-time migration)
+          if (localStorage.getItem('fbs_cashier_sales_only_v1') !== '1') {
+            const cashier = await DB.req(us.get('U002'));
+            if (cashier && cashier.username === 'cashier') {
+              cashier.permissions = ['sales'];
+              await DB.req(us.put(cashier));
+              updatedCount++;
+            }
+            localStorage.setItem('fbs_cashier_sales_only_v1', '1');
+          }
 
           // Rename "Chicken & Rice Meals" / "Chicken & Rice Meal" -> "Meals" in categories and transaction items
           const allCats = await DB.req(cs.getAll());
