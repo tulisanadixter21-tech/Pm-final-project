@@ -154,6 +154,7 @@ const Sales = {
     box.querySelector('#pos-search').addEventListener('input', e => { p.search = e.target.value.trim(); this.drawCatalog(); });
     box.querySelector('#pos-search').addEventListener('keydown', e => {
       if (e.key === 'Enter') {
+        if (e.isComposing || e.keyCode === 229) return;
         const exact = this.products.find(x => x.status === 'active' && x.id.toLowerCase() === p.search.toLowerCase());
         if (exact) { e.preventDefault(); this.addToCart(exact.id); }
       }
