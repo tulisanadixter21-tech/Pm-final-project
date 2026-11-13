@@ -65,18 +65,18 @@ const Reports = {
           </div>
           <div class="toolbar">
             <div class="search-box"><i class="bi bi-search"></i>
-              <input type="search" class="form-control" id="rep-search" placeholder="Search in report…" value="${Utils.esc(this.state.search)}"></div>
-            <select class="form-select" id="rep-cat"><option value="">All categories</option>
+              <input type="search" class="form-control" id="rep-search" aria-label="Search in report" placeholder="Search in report…" value="${Utils.esc(this.state.search)}"></div>
+            <select class="form-select" id="rep-cat" aria-label="Filter by category"><option value="">All categories</option>
               ${this.categories.map(c => `<option value="${c.id}">${Utils.esc(c.name)}</option>`).join('')}</select>
             <div class="d-flex flex-wrap gap-2 align-items-center" id="rep-date-controls">
-              <select class="form-select" id="rep-preset">
+              <select class="form-select" id="rep-preset" aria-label="Date range preset">
                 <option value="today">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option>
                 <option value="90">Last 90 days</option><option value="month">This month</option><option value="year">This year</option>
                 <option value="all">All time</option><option value="custom">Custom range</option>
               </select>
-              <input type="date" class="form-control" id="rep-from" value="${this.state.from}" title="From date">
+              <input type="date" class="form-control" id="rep-from" aria-label="From date" value="${this.state.from}" title="From date">
               <span class="small text-muted">to</span>
-              <input type="date" class="form-control" id="rep-to" value="${this.state.to}" title="To date">
+              <input type="date" class="form-control" id="rep-to" aria-label="To date" value="${this.state.to}" title="To date">
             </div>
             <div class="btn-group btn-group-sm ${this.state.type === 'best-sellers' ? '' : 'd-none'}" id="rep-best-sort-wrap">
               <button type="button" class="btn ${this.state.bestSort === 'qty' ? 'btn-primary' : 'btn-light'}" data-rbsort="qty">Rank by Qty Sold</button>

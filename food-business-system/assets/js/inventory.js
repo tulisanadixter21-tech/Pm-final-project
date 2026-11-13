@@ -241,11 +241,11 @@ const Inventory = {
           </div>
           <div class="toolbar">
             <div class="search-box"><i class="bi bi-search"></i>
-              <input type="search" class="form-control" id="inv-search" placeholder="Search by ingredient name or SKU / ID…" value="${Utils.esc(s.search)}"></div>
+              <input type="search" class="form-control" id="inv-search" aria-label="Search ingredients by name or SKU" placeholder="Search by ingredient name or SKU / ID…" value="${Utils.esc(s.search)}"></div>
             <select class="form-select" id="inv-cat" aria-label="Filter by category"><option value="">All categories</option>${this.categories.map(c => `<option value="${c.id}">${Utils.esc(c.name)}</option>`).join('')}</select>
             <select class="form-select" id="inv-status" aria-label="Filter by stock status">
               <option value="">All stock status</option><option value="in">In Stock</option><option value="low">Low Stock</option><option value="out">Out of Stock</option></select>
-            <select class="form-select" id="inv-expiry" title="Filter by expiration status">
+            <select class="form-select" id="inv-expiry" aria-label="Filter by expiration status" title="Filter by expiration status">
               <option value="">All Shelf-Life</option>
               <option value="expiring">Expiring Soon (Nearing / Very Soon)</option>
               <option value="expired">Expired</option>

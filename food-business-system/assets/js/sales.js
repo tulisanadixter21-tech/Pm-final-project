@@ -81,7 +81,7 @@ const Sales = {
             <div class="card-body">
               <div class="d-flex flex-wrap gap-2 mb-3">
                 <div class="search-box flex-grow-1" style="max-width:none"><i class="bi bi-search"></i>
-                  <input type="search" class="form-control" id="pos-search" placeholder="Search food item or scan product ID…" value="${Utils.esc(p.search)}"></div>
+                  <input type="search" class="form-control" id="pos-search" aria-label="Search food item or scan product ID" placeholder="Search food item or scan product ID…" value="${Utils.esc(p.search)}"></div>
               </div>
               <div class="pos-cats mb-3" id="pos-cats">
                 <button class="btn ${!p.category ? 'btn-primary' : 'btn-light'}" data-cat="">All Items</button>
@@ -106,15 +106,15 @@ const Sales = {
               <!-- Discount -->
               <div class="border-top pt-2 mt-2">
                 <div class="row g-2 align-items-center mb-2">
-                  <div class="col-5"><label class="form-label mb-0 small">Discount</label></div>
+                  <div class="col-5"><label class="form-label mb-0 small" for="pos-disc-type">Discount</label></div>
                   <div class="col-7">
                     <div class="input-group input-group-sm">
-                      <select class="form-select" id="pos-disc-type" style="max-width:92px">
+                      <select class="form-select" id="pos-disc-type" aria-label="Discount type" style="max-width:92px">
                         <option value="none">None</option>
                         <option value="percent" ${p.discountType === 'percent' ? 'selected' : ''}>% Off</option>
                         <option value="fixed" ${p.discountType === 'fixed' ? 'selected' : ''}>${Utils.currencySymbol()} Off</option>
                       </select>
-                      <input type="number" class="form-control" id="pos-disc-val" min="0" step="0.01" placeholder="0" value="${Utils.esc(p.discountValue)}" ${p.discountType === 'none' ? 'disabled' : ''}>
+                      <input type="number" class="form-control" id="pos-disc-val" aria-label="Discount value" min="0" step="0.01" placeholder="0" value="${Utils.esc(p.discountValue)}" ${p.discountType === 'none' ? 'disabled' : ''}>
                     </div>
                   </div>
                 </div>
@@ -131,7 +131,7 @@ const Sales = {
 
                 <!-- Payment -->
                 <div class="mt-3">
-                  <label class="form-label small mb-1 required">Cash Received (${Utils.currencySymbol()})</label>
+                  <label class="form-label small mb-1 required" for="pos-cash">Cash Received (${Utils.currencySymbol()})</label>
                   <input type="number" class="form-control" id="pos-cash" min="0" step="0.01" placeholder="Enter cash amount…" value="${Utils.esc(p.cash)}">
                   <div class="quick-cash d-flex flex-wrap gap-1 mt-2" id="quick-cash"></div>
                 </div>

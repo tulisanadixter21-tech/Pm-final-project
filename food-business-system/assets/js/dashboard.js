@@ -75,7 +75,7 @@ const Dashboard = {
         <div class="flex-grow-1">Your records are stored only in this browser. ${last ? `Last backup: ${Utils.fmtDateTime(last)}.` : 'You have not made a backup yet.'}</div>
         <a href="#/settings" class="btn btn-sm btn-outline-primary">Back up now</a></div>` : ''}
 
-      ${(expiredUnits > 0 || verySoonUnits > 0) && Prefs.get('expiryAlerts') !== false ? `
+      ${Auth.can('inventory') && (expiredUnits > 0 || verySoonUnits > 0) && Prefs.get('expiryAlerts') !== false ? `
       <div class="alert ${expiredUnits > 0 ? 'alert-soft-danger' : 'alert-soft-orange'} d-flex flex-wrap align-items-center gap-2 mb-3">
         <i class="bi bi-${expiredUnits > 0 ? 'calendar-x' : 'hourglass-bottom'} fs-5"></i>
         <div class="flex-grow-1 small">
@@ -96,20 +96,20 @@ const Dashboard = {
         <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'receipt', tone: 'blue', label: 'Total Transactions', value: Utils.num(this.txns.length), sub: `${today.count} today · Avg ${Utils.money(today.avgOrder)}` })}</div>
         <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'box-seam', tone: 'purple', label: 'Menu Products', value: Utils.num(menuProducts.length), sub: `${active.length} active on POS` })}</div>
         <div class="col-6 col-md-4 col-xl-2">${Utils.statCard({ icon: 'check2-circle', tone: 'teal', label: 'Raw Ingredients', value: Utils.num(activeIngredients.length), sub: `${status.in} in stock` })}</div>
-        <div class="col-6 col-md-4 col-xl-2"><a href="#/inventory" class="text-decoration-none text-reset">${Utils.statCard({ icon: 'exclamation-triangle', tone: 'amber', label: 'Low Stock', value: Utils.num(status.low), sub: 'At or below reorder level' })}</a></div>
-        <div class="col-6 col-md-4 col-xl-2"><a href="#/inventory" class="text-decoration-none text-reset">${Utils.statCard({ icon: 'x-octagon', tone: 'red', label: 'Out of Stock', value: Utils.num(status.out), sub: 'Needs restocking' })}</a></div>
+        <div class="col-6 col-md-4 col-xl-2">${Auth.can('inventory') ? `<a href="#/inventory" class="text-decoration-none text-reset">${Utils.statCard({ icon: 'exclamation-triangle', tone: 'amber', label: 'Low Stock', value: Utils.num(status.low), sub: 'At or below reorder level' })}</a>` : Utils.statCard({ icon: 'exclamation-triangle', tone: 'amber', label: 'Low Stock', value: Utils.num(status.low), sub: 'At or below reorder level' })}</div>
+        <div class="col-6 col-md-4 col-xl-2">${Auth.can('inventory') ? `<a href="#/inventory" class="text-decoration-none text-reset">${Utils.statCard({ icon: 'x-octagon', tone: 'red', label: 'Out of Stock', value: Utils.num(status.out), sub: 'Needs restocking' })}</a>` : Utils.statCard({ icon: 'x-octagon', tone: 'red', label: 'Out of Stock', value: Utils.num(status.out), sub: 'Needs restocking' })}</div>
       </div>
 
       <!-- Date Filter & Period Comparison Bar -->
       <div class="card mb-3">
         <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2 border-bottom">
           <span class="fw-semibold small"><i class="bi bi-calendar3 me-1"></i>Sales Analysis Period</span>
-          <select class="form-select form-select-sm" id="dash-range" style="width:auto">
+          <select class="form-select form-select-sm" id="dash-range" aria-label="Sales analysis period" style="width:auto">
             <option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30">Last 30 days</option>
             <option value="month">This month</option><option value="custom">Custom range</option></select>
           <div class="d-flex gap-2 align-items-center ${range === 'custom' ? '' : 'd-none'}" id="dash-custom">
-            <input type="date" class="form-control form-control-sm" id="dash-from"><span class="small">to</span>
-            <input type="date" class="form-control form-control-sm" id="dash-to"></div>
+            <input type="date" class="form-control form-control-sm" id="dash-from" aria-label="Custom start date"><span class="small">to</span>
+            <input type="date" class="form-control form-control-sm" id="dash-to" aria-label="Custom end date"></div>
           <span class="small text-muted ms-auto" id="dash-range-label"></span>
         </div>
         <!-- Sales Trends & Period Comparison Widget -->

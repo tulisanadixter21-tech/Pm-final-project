@@ -15,9 +15,9 @@ const Suppliers = {
       <div class="card">
         <div class="card-body border-bottom"><div class="toolbar">
           <div class="search-box"><i class="bi bi-search"></i>
-            <input type="search" class="form-control" id="sup-search" placeholder="Search supplier, contact person or address…" value="${Utils.esc(this.state.search)}"></div>
-          <select class="form-select" id="sup-status"><option value="">All status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
-          <select class="form-select" id="sup-prod"><option value="">All supplied products</option></select>
+            <input type="search" class="form-control" id="sup-search" aria-label="Search suppliers" placeholder="Search supplier, contact person or address…" value="${Utils.esc(this.state.search)}"></div>
+          <select class="form-select" id="sup-status" aria-label="Filter by supplier status"><option value="">All status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
+          <select class="form-select" id="sup-prod" aria-label="Filter by supplied product"><option value="">All supplied products</option></select>
           <div class="ms-auto d-flex gap-2">
             <button class="btn btn-light" id="sup-export"><i class="bi bi-filetype-csv me-1"></i>Export CSV</button>
             <button class="btn btn-primary" id="sup-add"><i class="bi bi-plus-lg me-1"></i>Add Supplier</button>

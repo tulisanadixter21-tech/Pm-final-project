@@ -20,9 +20,9 @@ const Users = {
       <div class="card">
         <div class="card-body border-bottom"><div class="toolbar">
           <div class="search-box"><i class="bi bi-search"></i>
-            <input type="search" class="form-control" id="usr-search" placeholder="Search ID, full name or username…" value="${Utils.esc(this.state.search)}"></div>
-          <select class="form-select" id="usr-role"><option value="">All roles</option><option value="admin">Administrator</option><option value="staff">Authorized Staff</option></select>
-          <select class="form-select" id="usr-status"><option value="">All status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
+            <input type="search" class="form-control" id="usr-search" aria-label="Search users" placeholder="Search ID, full name or username…" value="${Utils.esc(this.state.search)}"></div>
+          <select class="form-select" id="usr-role" aria-label="Filter by role"><option value="">All roles</option><option value="admin">Administrator</option><option value="staff">Authorized Staff</option></select>
+          <select class="form-select" id="usr-status" aria-label="Filter by user status"><option value="">All status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
           <div class="ms-auto">
             <button class="btn btn-primary" id="usr-add"><i class="bi bi-person-plus me-1"></i>Add User</button>
           </div>

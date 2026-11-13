@@ -43,7 +43,7 @@ const Products = {
 
           <div class="toolbar">
             <div class="search-box"><i class="bi bi-search"></i>
-              <input type="search" class="form-control" id="prod-search" placeholder="Search by product name or SKU / ID…" value="${Utils.esc(s.search)}"></div>
+              <input type="search" class="form-control" id="prod-search" aria-label="Search products by name or SKU" placeholder="Search by product name or SKU / ID…" value="${Utils.esc(s.search)}"></div>
             <select class="form-select" id="prod-cat" aria-label="Filter by category"></select>
             <select class="form-select" id="prod-avail" aria-label="Filter by stock status">
               <option value="">All stock status</option>

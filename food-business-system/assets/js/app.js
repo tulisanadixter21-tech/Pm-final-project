@@ -202,7 +202,7 @@ const App = {
       const items = [];
       let expAlertCount = 0;
 
-      if (Prefs.get('expiryAlerts') !== false) {
+      if (Auth.can('inventory') && Prefs.get('expiryAlerts') !== false) {
         ingredients.forEach(p => {
           const sum = Utils.productShelfSummary(p);
           if (sum.expiredQty > 0) {
@@ -238,7 +238,7 @@ const App = {
         });
       }
 
-      if (Prefs.get('lowStockAlerts')) {
+      if (Auth.can('inventory') && Prefs.get('lowStockAlerts')) {
         out.forEach(p => items.push({ icon: 'x-octagon', tone: 'red', title: `${p.name} is out of stock`, text: 'Restock this item as soon as possible.', href: '#/inventory' }));
         low.forEach(p => items.push({ icon: 'exclamation-triangle', tone: 'amber', title: `${p.name} is low on stock`, text: `${Utils.num(p.stock)} ${p.unit} left (reorder at ${p.reorderLevel})`, href: '#/inventory' }));
       }
@@ -255,7 +255,7 @@ const App = {
       badge.textContent = items.length > 99 ? '99+' : items.length;
       badge.classList.toggle('d-none', items.length === 0);
       const navBadge = document.getElementById('nav-low-badge');
-      const navCount = low.length + out.length + expAlertCount;
+      const navCount = Auth.can('inventory') ? (low.length + out.length + expAlertCount) : 0;
       if (navBadge) {
         navBadge.textContent = navCount;
         navBadge.classList.toggle('d-none', navCount === 0);

@@ -28,22 +28,22 @@ const SettingsPage = {
           <form id="settings-form" class="card" novalidate>
             <div class="card-header"><i class="bi bi-building me-2"></i>Business, Currency &amp; Receipt Settings</div>
             <div class="card-body"><div class="row g-3">
-              <div class="col-md-8"><label class="form-label required">Business Name</label>
-                <input class="form-control" name="businessName" value="${Utils.esc(s.businessName)}" maxlength="80"></div>
-              <div class="col-md-4"><label class="form-label required">Currency</label>
-                <select class="form-select" name="currency">
+              <div class="col-md-8"><label class="form-label required" for="set-business-name">Business Name</label>
+                <input class="form-control" id="set-business-name" name="businessName" autocomplete="organization" value="${Utils.esc(s.businessName)}" maxlength="80"></div>
+              <div class="col-md-4"><label class="form-label required" for="set-currency">Currency</label>
+                <select class="form-select" id="set-currency" name="currency">
                   <option value="PHP|₱" ${s.currency === 'PHP' ? 'selected' : ''}>PHP (₱) — Philippine Peso</option>
                   <option value="USD|$" ${s.currency === 'USD' ? 'selected' : ''}>USD ($) — US Dollar</option>
                 </select></div>
-              <div class="col-12"><label class="form-label required">Business Address</label>
-                <input class="form-control" name="address" value="${Utils.esc(s.address)}" maxlength="160"></div>
-              <div class="col-sm-6"><label class="form-label required">Contact Number</label>
-                <input class="form-control" name="phone" value="${Utils.esc(s.phone)}" maxlength="30"></div>
-              <div class="col-sm-6"><label class="form-label">Email</label>
-                <input type="email" class="form-control" name="email" value="${Utils.esc(s.email || '')}" maxlength="80"></div>
+              <div class="col-12"><label class="form-label required" for="set-address">Business Address</label>
+                <input class="form-control" id="set-address" name="address" autocomplete="street-address" value="${Utils.esc(s.address)}" maxlength="160"></div>
+              <div class="col-sm-6"><label class="form-label required" for="set-phone">Contact Number</label>
+                <input class="form-control" id="set-phone" name="phone" autocomplete="tel" value="${Utils.esc(s.phone)}" maxlength="30"></div>
+              <div class="col-sm-6"><label class="form-label" for="set-email">Email</label>
+                <input type="email" class="form-control" id="set-email" name="email" autocomplete="email" value="${Utils.esc(s.email || '')}" maxlength="80"></div>
 
-              <div class="col-sm-6"><label class="form-label required">Default Low Stock Threshold</label>
-                <input type="number" class="form-control" name="lowStockThreshold" min="0" step="1" value="${s.lowStockThreshold ?? 10}">
+              <div class="col-sm-6"><label class="form-label required" for="set-low-stock">Default Low Stock Threshold</label>
+                <input type="number" class="form-control" id="set-low-stock" name="lowStockThreshold" min="0" step="1" value="${s.lowStockThreshold ?? 10}">
                 <div class="form-text">Default reorder level for newly created products.</div></div>
               <div class="col-sm-6 d-flex align-items-end">
                 <button type="button" class="btn btn-soft btn-sm mb-1" id="apply-threshold">
@@ -51,29 +51,29 @@ const SettingsPage = {
                 </button>
               </div>
 
-              <div class="col-12"><hr class="my-1"><h6 class="fw-semibold mb-0">Expiration &amp; Shelf-Life Warning Periods <span class="text-muted fw-normal small">(days before expiration)</span></h6></div>
-              <div class="col-sm-4"><label class="form-label required">Nearing Expiration <span class="badge badge-soft-warning ms-1">Yellow</span></label>
-                <input type="number" class="form-control" name="expiryNearDays" min="1" max="365" step="1" value="${s.expiryNearDays ?? 7}">
+              <div class="col-12"><hr class="my-1"><h2 class="h6 fw-semibold mb-0">Expiration &amp; Shelf-Life Warning Periods <span class="text-muted fw-normal small">(days before expiration)</span></h2></div>
+              <div class="col-sm-4"><label class="form-label required" for="set-expiry-near">Nearing Expiration <span class="badge badge-soft-warning ms-1">Yellow</span></label>
+                <input type="number" class="form-control" id="set-expiry-near" name="expiryNearDays" min="1" max="365" step="1" value="${s.expiryNearDays ?? 7}">
                 <div class="form-text">Default: 7 days before expiry.</div></div>
-              <div class="col-sm-4"><label class="form-label required">Expiring Very Soon <span class="badge badge-soft-orange ms-1">Orange</span></label>
-                <input type="number" class="form-control" name="expiryVerySoonDays" min="1" max="365" step="1" value="${s.expiryVerySoonDays ?? 3}">
+              <div class="col-sm-4"><label class="form-label required" for="set-expiry-very-soon">Expiring Very Soon <span class="badge badge-soft-orange ms-1">Orange</span></label>
+                <input type="number" class="form-control" id="set-expiry-very-soon" name="expiryVerySoonDays" min="1" max="365" step="1" value="${s.expiryVerySoonDays ?? 3}">
                 <div class="form-text">Default: 3 days before expiry.</div></div>
-              <div class="col-sm-4"><label class="form-label required">Immediate Alert <span class="badge badge-soft-danger ms-1">1-Day</span></label>
-                <input type="number" class="form-control" name="expiryCriticalDays" min="0" max="365" step="1" value="${s.expiryCriticalDays ?? 1}">
+              <div class="col-sm-4"><label class="form-label required" for="set-expiry-critical">Immediate Alert <span class="badge badge-soft-danger ms-1">1-Day</span></label>
+                <input type="number" class="form-control" id="set-expiry-critical" name="expiryCriticalDays" min="0" max="365" step="1" value="${s.expiryCriticalDays ?? 1}">
                 <div class="form-text">Default: 1 day before expiry.</div></div>
 
-              <div class="col-12"><hr class="my-1"><h6 class="fw-semibold mb-0">Receipt Information</h6></div>
-              <div class="col-12"><label class="form-label">Receipt Header Message</label>
-                <input class="form-control" name="receiptHeader" value="${Utils.esc(s.receiptHeader || '')}" maxlength="120"></div>
-              <div class="col-12"><label class="form-label">Receipt Footer Message</label>
-                <input class="form-control" name="receiptFooter" value="${Utils.esc(s.receiptFooter || '')}" maxlength="120"></div>
+              <div class="col-12"><hr class="my-1"><h2 class="h6 fw-semibold mb-0">Receipt Information</h2></div>
+              <div class="col-12"><label class="form-label" for="set-receipt-header">Receipt Header Message</label>
+                <input class="form-control" id="set-receipt-header" name="receiptHeader" value="${Utils.esc(s.receiptHeader || '')}" maxlength="120"></div>
+              <div class="col-12"><label class="form-label" for="set-receipt-footer">Receipt Footer Message</label>
+                <input class="form-control" id="set-receipt-footer" name="receiptFooter" value="${Utils.esc(s.receiptFooter || '')}" maxlength="120"></div>
               <div class="col-12">
                 <label class="form-check"><input type="checkbox" class="form-check-input" name="receiptShowCashier" ${s.receiptShowCashier !== false ? 'checked' : ''}>
                   <span class="form-check-label">Show cashier name on receipt</span></label></div>
 
-              <div class="col-12"><hr class="my-1"><h6 class="fw-semibold mb-0">Application Preferences <span class="text-muted fw-normal small">(saved in LocalStorage)</span></h6></div>
-              <div class="col-sm-6"><label class="form-label">Table rows per page</label>
-                <select class="form-select" name="pageSize">
+              <div class="col-12"><hr class="my-1"><h2 class="h6 fw-semibold mb-0">Application Preferences <span class="text-muted fw-normal small">(saved in LocalStorage)</span></h2></div>
+              <div class="col-sm-6"><label class="form-label" for="set-page-size">Table rows per page</label>
+                <select class="form-select" id="set-page-size" name="pageSize">
                   ${[5, 10, 20, 50].map(n => `<option value="${n}" ${Number(p.pageSize) === n ? 'selected' : ''}>${n} rows</option>`).join('')}
                 </select></div>
               <div class="col-sm-6 d-flex flex-column justify-content-end gap-1">

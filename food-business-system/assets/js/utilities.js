@@ -558,17 +558,17 @@ const Utils = (() => {
   }
   function pagerHTML(p) {
     if (!p.total) return '';
-    const btn = (n, label, disabled, active) =>
-      `<li class="page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}"><button class="page-link" data-page="${n}" ${disabled ? 'tabindex="-1"' : ''}>${label}</button></li>`;
+    const btn = (n, label, disabled, active, aria = '') =>
+      `<li class="page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}"><button class="page-link" data-page="${n}" ${disabled ? 'tabindex="-1" aria-disabled="true"' : ''} ${active ? 'aria-current="page"' : ''} ${aria ? `aria-label="${aria}"` : ''}>${label}</button></li>`;
     const nums = [];
     const from = Math.max(1, p.page - 2), to = Math.min(p.pages, p.page + 2);
-    if (from > 1) nums.push(btn(1, '1', false, p.page === 1));
+    if (from > 1) nums.push(btn(1, '1', false, p.page === 1, 'Page 1'));
     if (from > 2) nums.push('<li class="page-item disabled"><span class="page-link">…</span></li>');
-    for (let i = from; i <= to; i++) nums.push(btn(i, i, false, i === p.page));
+    for (let i = from; i <= to; i++) nums.push(btn(i, i, false, i === p.page, `Page ${i}`));
     if (to < p.pages - 1) nums.push('<li class="page-item disabled"><span class="page-link">…</span></li>');
-    if (to < p.pages) nums.push(btn(p.pages, p.pages, false, p.page === p.pages));
+    if (to < p.pages) nums.push(btn(p.pages, p.pages, false, p.page === p.pages, `Page ${p.pages}`));
     return `<div class="pager"><div class="pager-info">Showing ${p.start}–${p.end} of ${p.total}</div>
-      <ul class="pagination pagination-sm">${btn(p.page - 1, '<i class="bi bi-chevron-left"></i>', p.page === 1)}${nums.join('')}${btn(p.page + 1, '<i class="bi bi-chevron-right"></i>', p.page === p.pages)}</ul></div>`;
+      <ul class="pagination pagination-sm">${btn(p.page - 1, '<i class="bi bi-chevron-left" aria-hidden="true"></i>', p.page === 1, false, 'Previous page')}${nums.join('')}${btn(p.page + 1, '<i class="bi bi-chevron-right" aria-hidden="true"></i>', p.page === p.pages, false, 'Next page')}</ul></div>`;
   }
   function bindPager(container, onPage) {
     container.addEventListener('click', e => {
@@ -581,7 +581,7 @@ const Utils = (() => {
   /* ---------- UI snippets ---------- */
   function emptyState(icon, title, text = '', action = '') {
     return `<div class="empty-state"><div class="empty-icon"><i class="bi bi-${icon}"></i></div>
-      <h6>${esc(title)}</h6>${text ? `<p>${esc(text)}</p>` : ''}${action ? `<div class="mt-3">${action}</div>` : ''}</div>`;
+      <h2 class="h6">${esc(title)}</h2>${text ? `<p>${esc(text)}</p>` : ''}${action ? `<div class="mt-3">${action}</div>` : ''}</div>`;
   }
   function emptyRow(colspan, icon, title, text = '') {
     return `<tr><td colspan="${colspan}">${emptyState(icon, title, text)}</td></tr>`;
