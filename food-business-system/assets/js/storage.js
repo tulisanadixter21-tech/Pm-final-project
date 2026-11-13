@@ -335,13 +335,23 @@ const Prefs = (() => {
     // 2. Migrate & sync IndexedDB products, categories, transactions, and movements stores safely
     if (typeof DB !== 'undefined' && DB && typeof DB.run === 'function') {
       try {
-        await DB.run(['products', 'categories', 'transactions', 'movements', 'suppliers', 'users'], 'readwrite', async tx => {
+        await DB.run(['products', 'categories', 'transactions', 'movements', 'suppliers', 'users', 'customers'], 'readwrite', async tx => {
           const ps = tx.objectStore('products');
           const cs = tx.objectStore('categories');
           const ts = tx.objectStore('transactions');
           const ms = tx.objectStore('movements');
           const ss = tx.objectStore('suppliers');
           const us = tx.objectStore('users');
+          const custs = tx.objectStore('customers');
+
+          // One-time cleanup: clear sample sales, movements, and customer history while keeping current products
+          if (localStorage.getItem('fbs_clear_sample_history_v1') !== '1') {
+            await DB.req(ts.clear());
+            await DB.req(ms.clear());
+            await DB.req(custs.clear());
+            localStorage.setItem('fbs_clear_sample_history_v1', '1');
+            updatedCount++;
+          }
 
           // Restrict default cashier account to Sales & POS only (one-time migration)
           if (localStorage.getItem('fbs_cashier_sales_only_v1') !== '1') {

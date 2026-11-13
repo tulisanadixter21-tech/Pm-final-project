@@ -217,105 +217,12 @@ const SampleData = {
       { id: 'U004', fullName: 'Bea Lim', username: 'bea', password: 'staff123', role: 'staff', phone: '0917 555 0103', status: 'inactive', permissions: ['sales'] }
     ].map(u => ({ ...u, createdAt: at(-120, 8, 0).toISOString() }));
 
-    /* ---------- Simulate inventory + sales history ---------- */
+    /* ---------- Clean start: keep current products & ingredients, no sample sales/movement history ---------- */
     const movements = [];
     const transactions = [];
-    let movNo = 0;
-    const move = (p, type, qty, newStock, date, reason, refId = '', userName = 'Administrator', extra = {}) => {
-      movements.push({
-        id: 'MOV-' + U.pad(++movNo, 6), productId: p.id, productName: p.name, type, quantity: qty,
-        previousStock: p.stock, newStock, date: date.toISOString(), reason, refId, userName,
-        ...extra
-      });
-      p.stock = newStock;
-      p.updatedAt = date.toISOString();
-    };
 
     products.forEach(p => {
-      const recDate = U.dateKey(at(-30, 7, 0));
-      const expDate = U.dateKey(U.addDays(at(-30, 7, 0), p.defaultShelfLifeDays || 14));
-      move(p, 'Initial Stock', p._opening, p._opening, at(-30, 7, 0), 'Opening inventory count', '', 'Administrator', {
-        batchId: `${p.id}-B01`, dateReceived: recDate, expirationDate: expDate
-      });
-    });
-
-    const totalWeight = products.reduce((s, p) => s + p._weight, 0);
-    const pick = () => { let r = rand() * totalWeight; for (const p of products) { r -= p._weight; if (r <= 0) return p; } return products[0]; };
-    const cashiers = [users[1], users[1], users[1], users[0]];
-
-    for (let day = -29; day <= 0; day++) {
-      if (day === -15 || day === -7) {
-        products.forEach(p => {
-          if (p.id === 'P005' || p.id === 'P010') return;
-          if (p.stock < p._opening * 0.5) {
-            const sup = supplierOf(p.id);
-            const qty = p._opening - p.stock;
-            const d = at(day, 7, 30);
-            move(p, 'Stock In', qty, p.stock + qty, d, 'Supplier delivery' + (sup ? ' - ' + sup.name : ''), '', 'Jerome Navarro', {
-              batchId: `${p.id}-B${day === -15 ? '02' : '03'}`,
-              dateReceived: U.dateKey(d),
-              expirationDate: U.dateKey(U.addDays(d, p.defaultShelfLifeDays || 10))
-            });
-          }
-        });
-      }
-      const date0 = U.addDays(U.startOfDay(now), day);
-      const weekend = date0.getDay() === 0 || date0.getDay() === 6;
-      const count = randInt(weekend ? 6 : 4, weekend ? 10 : 7);
-      const times = Array.from({ length: count }, () => randInt(8 * 60, 21 * 60)).sort((a, b) => a - b);
-      let seq = 0;
-      times.forEach(mins => {
-        const date = at(day, Math.floor(mins / 60), mins % 60);
-        if (date > now) return;
-        const lines = new Map();
-        const n = randInt(1, 4);
-        for (let k = 0; k < n; k++) {
-          const p = pick();
-          const qty = randInt(1, rand() < 0.75 ? 2 : 3);
-          const already = lines.get(p.id) || 0;
-          if (p.stock - already >= qty) lines.set(p.id, already + qty);
-        }
-        if (!lines.size) return;
-        const cust = rand() < 0.35 ? customers[randInt(0, customers.length - 1)] : null;
-        const cashier = cashiers[randInt(0, cashiers.length - 1)];
-        const id = `TXN-${U.compactDate(date)}-${U.pad(++seq, 4)}`;
-        const items = [...lines.entries()].map(([pid, qty]) => {
-          const p = products.find(x => x.id === pid);
-          return { productId: p.id, name: p.name, category: catName(p.categoryId), unit: p.unit, qty, price: p.price, cost: p.cost, subtotal: U.round2(p.price * qty) };
-        });
-        const subtotal = U.round2(items.reduce((s, i) => s + i.subtotal, 0));
-        let discountType = 'none', discountValue = 0, discount = 0;
-        const r = rand();
-        if (cust && r < 0.15) { discountType = 'percent'; discountValue = 20; discount = U.round2(subtotal * 0.2); }
-        else if (r > 0.95 && subtotal >= 200) { discountType = 'fixed'; discountValue = 20; discount = 20; }
-        const total = U.round2(subtotal - discount);
-        const options = [Math.ceil(total / 50) * 50, Math.ceil(total / 100) * 100, Math.ceil(total / 500) * 500, Math.max(1000, Math.ceil(total / 1000) * 1000), total];
-        const cash = options[randInt(0, options.length - 1)];
-        items.forEach(i => {
-          const p = products.find(x => x.id === i.productId);
-          move(p, 'Sale', i.qty, p.stock - i.qty, date, 'Sold - ' + id, id, cashier.fullName);
-        });
-        transactions.push({
-          id, date: date.toISOString(), items, itemCount: items.reduce((s, i) => s + i.qty, 0),
-          subtotal, discountType, discountValue, discount, total, cash, change: U.round2(cash - total),
-          customerId: cust ? cust.id : null, customerName: cust ? cust.name : 'Guest',
-          cashierId: cashier.id, cashierName: cashier.fullName, status: 'completed'
-        });
-      });
-    }
-
-    // Guarantee realistic alert states for demonstration (recorded as proper movements)
-    const cake = products.find(p => p.id === 'P005');
-    if (cake.stock > cake.reorderLevel) {
-      move(cake, 'Stock Out', cake.stock - (cake.reorderLevel - 3), cake.reorderLevel - 3, new Date(now), 'Spoilage - expired slices disposed', '', 'Jerome Navarro');
-    }
-    const pancakes = products.find(p => p.id === 'P010');
-    if (pancakes.stock > 0) {
-      move(pancakes, 'Adjustment', pancakes.stock, 0, new Date(now), 'Physical count correction - batter spoiled', '', 'Jerome Navarro');
-    }
-
-    // Clean up temporary simulation fields on menu items (finished menu items do not track expiry batches)
-    products.forEach(p => {
+      p.stock = p._opening || p.stock || 0;
       delete p._opening;
       delete p._weight;
       p.isIngredient = false;
@@ -328,30 +235,10 @@ const SampleData = {
       : [];
     rawIngredients.forEach(ing => {
       products.push(ing);
-      if (ing.stock > 0) {
-        const firstBatch = ing.batches && ing.batches[0];
-        movements.push({
-          id: 'MOV-' + U.pad(++movNo, 6),
-          productId: ing.id,
-          productName: ing.name,
-          type: 'Initial Stock',
-          quantity: ing.stock,
-          previousStock: 0,
-          newStock: ing.stock,
-          date: ing.createdAt,
-          reason: 'Opening raw ingredient inventory',
-          refId: '',
-          batchId: firstBatch ? firstBatch.id : `${ing.id}-B01`,
-          dateReceived: firstBatch ? firstBatch.dateReceived : '',
-          expirationDate: firstBatch ? firstBatch.expirationDate : '',
-          userName: 'Administrator'
-        });
-      }
     });
-    movements.sort((a, b) => a.date.localeCompare(b.date));
 
     return {
-      categories, products, customers, suppliers, users, movements, transactions,
+      categories, products, customers: [], suppliers, users, movements, transactions,
       settings: [
         { key: 'business', value: this.defaultSettings() },
         { key: 'meta', value: { initialized: true, initializedAt: now.toISOString(), version: this.VERSION } }

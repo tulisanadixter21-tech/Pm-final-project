@@ -5,7 +5,7 @@
    ========================================================= */
 'use strict';
 
-const CACHE_NAME = 'food-business-ims-v11';
+const CACHE_NAME = 'food-business-ims-v12';
 const ASSETS = [
   './',
   './index.html',
